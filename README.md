@@ -34,7 +34,7 @@ from https://nodejs.org/ and npm is included in the Node.js installation.
 You can clone this repository using the following command:
 
 ```bash
-git clone https://github.com/Osadhi/jotion.git
+git clone https://github.com/vovanukas/notion-clone.git
 ```
 
 ### Installation
@@ -42,7 +42,7 @@ git clone https://github.com/Osadhi/jotion.git
 Navigate to the project directory and install the dependencies:
 
 ```bash
-cd jotion
+cd notion-clone
 npm install
 ```
 
