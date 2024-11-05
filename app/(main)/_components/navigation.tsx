@@ -1,3 +1,5 @@
+// TODO: Switch to shadcn sidebar https://ui.shadcn.com/docs/components/sidebar
+
 "use client";
 
 import { cn } from "@/lib/utils";
