@@ -6,20 +6,23 @@ import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/clerk-react";
 import { PlusCircleIcon } from "lucide-react";
 import { useMutation } from "convex/react";
+import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
 
 const DocumentsPage = () => {
     const { user } = useUser();
     const create = useMutation(api.documents.create);
+    const router = useRouter();
 
     const onCreate = () => {
-        const promise = create({ title: "Untitled" });
+        const promise = create({ title: "Untitled" })
+            .then((documentId) => router.push(`documents/${documentId}`))
 
         toast.promise(promise, {
             loading: "Creating a new note...",
             success: "New note created!",
-            fail: "Failed to create a new note.",
+            error: "Failed to create a new note.",
         })
     }
 

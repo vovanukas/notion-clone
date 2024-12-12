@@ -21,7 +21,7 @@ interface ItemProps {
     level?: number;
     onExpand?: () => void;
     label: string;
-    onClick: () => void;
+    onClick?: () => void;
     icon: LucideIcon;
 }
 
@@ -47,7 +47,8 @@ export const Item = ({
     ) => {
         event.stopPropagation();
         if (!id) return;
-        const promise = archive({ id });
+        const promise = archive({ id })
+            .then(() => router.push("/documents"))
 
         toast.promise(promise, {
             loading: "Moving to trash...",
@@ -73,8 +74,9 @@ export const Item = ({
                 if(!expanded) {
                     onExpand?.();
                 }
-                // router.push(`/documents/${documentId}`)
-            })
+                router.push(`/documents/${documentId}`)
+            });
+
         toast.promise(promise, {
             loading: "Creating a new note...",
             success: "New note created!",
@@ -98,7 +100,7 @@ export const Item = ({
             {!!id && (
                 <div
                     role="button"
-                    className="h-full rounded-sm hover:bg-neutral-300 dark:bg-neutral-600 mr-1"
+                    className="h-full rounded-sm hover:bg-neutral-300 dark:hover:bg-neutral-600 mr-1"
                     onClick={handleExpand}
                 >
                     <ChevronIcon
@@ -112,7 +114,7 @@ export const Item = ({
                 </div>
             ) : (
                 <Icon 
-                    className="shrink-0 h-[18px] mr-2 text-muted-foreground" 
+                    className="shrink-0 h-[18px] w-[18px] mr-2 text-muted-foreground"
                 />
             )}
             <span>
