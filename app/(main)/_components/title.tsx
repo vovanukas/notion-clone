@@ -60,6 +60,7 @@ export const Title = ({
                 <Input
                     className="h-7 px-2 focus-visible:ring-transparent"
                     ref={inputRef}
+                    value={title}
                     onClick={enableInput}
                     onBlur={disableInput}
                     onChange={onChange}
@@ -73,7 +74,7 @@ export const Title = ({
                     className="font-normal h-auto p-1"
                 >
                     <span className="truncate">
-                        {initialData?.title}
+                        {title}
                     </span>
                 </Button>
             )}
