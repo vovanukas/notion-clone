@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-
 import { mutation, query } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -103,6 +102,7 @@ export const create = mutation ({
             userId,
             isArchived: false,
             isPublished: false,
+            workflowRunning: true,
         });
 
         return document;
@@ -278,6 +278,8 @@ export const update = mutation({
         coverImage: v.optional(v.string()),
         icon: v.optional(v.string()),
         isPublished: v.optional(v.boolean()),
+        workflowRunning: v.optional(v.boolean()),
+        websiteUrl: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -290,7 +292,7 @@ export const update = mutation({
 
         const { id, ...rest } = args;
 
-        const existingDocument = await ctx.db.get(args.id);
+        const existingDocument = await ctx.db.get(id);
 
         if (!existingDocument) {
             throw new Error ("Not found");
@@ -300,7 +302,7 @@ export const update = mutation({
             throw new Error ("Unauthorised");
         }
 
-        const document = await ctx.db.patch(args.id, {
+        const document = await ctx.db.patch(id, {
             ...rest,
         });
 
@@ -365,3 +367,32 @@ export const removeCoverImage = mutation({
         return document
     }
 })
+
+export const updatePagesBuildStatus = mutation({
+    args: {
+        id: v.id("documents"),
+        workflowRunning: v.optional(v.boolean()),
+        websiteUrl: v.optional(v.any()),
+        callbackUserId: v.string(),
+    },
+    handler: async (ctx, args) => {
+
+        const { id, callbackUserId, ...rest } = args;
+
+        const existingDocument = await ctx.db.get(id);
+
+        if (!existingDocument) {
+            throw new Error ("Not found");
+        }
+
+        if (existingDocument.userId !== callbackUserId) {
+            throw new Error ("Unauthorised");
+        }
+
+        const document = await ctx.db.patch(id, {
+            ...rest,
+        });
+
+        return document;
+    }
+});

@@ -14,6 +14,9 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as documents from "../documents.js";
+import type * as github from "../github.js";
+import type * as http from "../http.js";
+import type * as httpActions from "../httpActions.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -25,6 +28,9 @@ import type * as documents from "../documents.js";
  */
 declare const fullApi: ApiFromModules<{
   documents: typeof documents;
+  github: typeof github;
+  http: typeof http;
+  httpActions: typeof httpActions;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Trash } from "lucide-react";
+import { MoreHorizontal, Trash, UploadCloudIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface MenuProps {
@@ -53,6 +53,10 @@ export const Menu = ({
                 <DropdownMenuItem onClick={onArchive}>
                     <Trash className="h-4 w-4 mr-2" />
                     Delete
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {}}>
+                    <UploadCloudIcon className="h-4 w-4 mr-2" />
+                    Upload to Website
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <div className="text-xs text-muted-foreground p-2">

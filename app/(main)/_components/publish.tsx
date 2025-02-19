@@ -9,8 +9,7 @@ import {
 } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button";
 
-import { useOrigin } from "@/hooks/use-origin";
-import { useMutation } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Check, Copy, Globe } from "lucide-react";
@@ -21,48 +20,29 @@ interface PublishProps {
 }
 
 export const Publish = ({initialData}: PublishProps) => {
-    const origin = useOrigin();
-    const update = useMutation(api.documents.update);
+    const publishGithubPage = useAction(api.github.publishPage);
 
     const [copied, setCopied] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const url = `${origin}/preview/${initialData._id}`;
+    const data = useQuery(api.documents.getById, { documentId: initialData._id });
 
-    const onPublish = () => {
+    const onPublish = async () => {
         setIsSubmitting(true);
-
-        const promise = update({
+        const promise = publishGithubPage({
             id: initialData._id,
-            isPublished: true,
         })
-            .finally(() => setIsSubmitting(false));
+        .finally(() => setIsSubmitting(false));
 
         toast.promise(promise, {
-            loading: "Publishing...",
-            success: "Note published!",
-            error: "Failed to publish note."
-        })
-    }
-
-    const onUnpublish = () => {
-        setIsSubmitting(true);
-
-        const promise = update({
-            id: initialData._id,
-            isPublished: false,
-        })
-            .finally(() => setIsSubmitting(false));
-
-        toast.promise(promise, {
-            loading: "Unpublishing...",
-            success: "Note unpublished!",
-            error: "Failed to unpublish note."
-        })
+                    loading: "Preparing to launch...",
+                    success: "We are launching your webiste!",
+                    error: "Failed to launch."
+                })
     }
 
     const onCopy = () => {
-        navigator.clipboard.writeText(url);
+        navigator.clipboard.writeText(data?.websiteUrl);
         setCopied(true);
 
         setTimeout(() => {
@@ -84,7 +64,7 @@ export const Publish = ({initialData}: PublishProps) => {
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-72" align="end" alignOffset={8} forceMount>
-                    {initialData.isPublished ? (
+                    {!initialData.workflowRunning ? (
                         <div className="space-y-4">
                             <div className="flex items-center gap-x-2">
                                 <Globe className="text-sky-500 animate-pulse h-4 w-4" />
@@ -95,7 +75,7 @@ export const Publish = ({initialData}: PublishProps) => {
                             <div className="flex items-center">
                                 <input
                                     className="flex-1 px-2 text-xs border rounded-l-md h-8 bg-muted truncate"
-                                    value={url}
+                                    value={data?.websiteUrl}
                                     disabled
                                 />
                                 <Button
@@ -114,16 +94,16 @@ export const Publish = ({initialData}: PublishProps) => {
                                 size="sm"
                                 className="w-full text-xs"
                                 disabled={isSubmitting}
-                                onClick={onUnpublish}
+                                onClick={onPublish}
                             >
-                                Unpublish
+                                Push changes
                             </Button>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center">
                             <Globe className="h-8 w-8 text-muted-foreground mb-2" />
                             <p className="text-sm font-medium mb-2">
-                                Publish this note
+                                Publish this website
                             </p>
                             <span className="text-xs text-muted-foreground mb-4">
                                 Share your work with others!

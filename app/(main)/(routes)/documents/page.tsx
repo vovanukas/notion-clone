@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 import { useUser } from "@clerk/clerk-react";
 import { PlusCircleIcon } from "lucide-react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
@@ -13,11 +13,17 @@ import { toast } from "sonner";
 const DocumentsPage = () => {
     const { user } = useUser();
     const create = useMutation(api.documents.create);
+    const createRepo = useAction(api.github.createRepo);
     const router = useRouter();
 
     const onCreate = () => {
         const promise = create({ title: "Untitled" })
-            .then((documentId) => router.push(`documents/${documentId}`))
+            .then((documentId) => {
+                router.push(`documents/${documentId}`);
+                return createRepo({
+                    repoName: documentId
+                });
+            })
 
         toast.promise(promise, {
             loading: "Creating a new note...",
