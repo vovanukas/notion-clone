@@ -5,6 +5,7 @@ import { action } from "./_generated/server";
 import { Octokit } from "@octokit/rest";
 import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
+import { parseTOML } from "confbox"
 
 
 const octokit = new Octokit({
@@ -288,5 +289,35 @@ export const encryptAndPublishSecret = action({
     
     console.log(response.status + ' ' + response.data);
     console.log(`${args.secret} secret sent to github repo ${output}`);
+    },
+});
+
+export const fetchAndParseConfigToml = action({
+  args: {
+    id: v.id("documents"),
+   },
+  handler: async (ctx, args) => {
+    try {
+      const response = await octokit.repos.getContent({
+        owner: 'hugotion',
+        repo: args.id,
+        path: 'config.toml',
+      });
+
+      if ('content' in response.data && typeof response.data.content === 'string') {
+        // Decode base64 content
+        const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+
+        // Parse TOML content
+        const parsedConfig = parseTOML(content);
+
+        return parsedConfig; // Returning the parsed config object
+      } else {
+        throw new Error("Invalid file content or format");
+      }
+    } catch (error) {
+      console.error("Failed to fetch or parse config.toml:", error);
+      throw new Error("Error retrieving and parsing the config.toml file");
+    }
     },
 });
