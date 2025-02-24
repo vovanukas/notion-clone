@@ -5,7 +5,6 @@ import { action } from "./_generated/server";
 import { Octokit } from "@octokit/rest";
 import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
-import { parseTOML } from "confbox"
 
 
 const octokit = new Octokit({
@@ -292,10 +291,10 @@ export const encryptAndPublishSecret = action({
     },
 });
 
-export const fetchAndParseConfigToml = action({
+export const fetchAndReturnConfigToml = action({
   args: {
     id: v.id("documents"),
-   },
+  },
   handler: async (ctx, args) => {
     try {
       const response = await octokit.repos.getContent({
@@ -305,19 +304,46 @@ export const fetchAndParseConfigToml = action({
       });
 
       if ('content' in response.data && typeof response.data.content === 'string') {
-        // Decode base64 content
-        const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+        const base64DecodedContent = Buffer.from(response.data.content, 'base64').toString('utf8');
 
-        // Parse TOML content
-        const parsedConfig = parseTOML(content);
-
-        return parsedConfig; // Returning the parsed config object
+        return base64DecodedContent;
       } else {
         throw new Error("Invalid file content or format");
       }
     } catch (error) {
-      console.error("Failed to fetch or parse config.toml:", error);
-      throw new Error("Error retrieving and parsing the config.toml file");
+      console.error("Failed to fetch config.toml:", error);
+      throw new Error("Error retrieving config.toml file");
     }
-    },
+  },
+});
+
+export const parseAndSaveSettingsObject = action({
+  args: {
+    id: v.id("documents"),
+    newSettings: v.string(),
+  },
+  handler: async (_, args) => {
+    const contentResponse = await octokit.repos.getContent({
+      owner: "hugotion",
+      repo: args.id,
+      path: "config.toml",
+    });
+
+    if (!Array.isArray(contentResponse.data) && contentResponse.data.type === 'file') {
+      const { sha } = contentResponse.data;
+
+      const updatedConfig = args.newSettings;
+
+      await octokit.repos.createOrUpdateFileContents({
+        owner: "hugotion",
+        repo: args.id,
+        path: "config.toml",
+        message: "Changed config settings",
+        content: Buffer.from(updatedConfig).toString("base64"),
+        sha,
+      });
+    } else {
+      throw new Error("The path is not a file or does not exist.");
+    }
+  }
 });
