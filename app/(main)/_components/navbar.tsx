@@ -18,32 +18,27 @@ export const Navbar = () => {
   const params = useParams();
   const { toggleSidebar } = useSidebar();
 
-  if (!params.documentId) {
-    return null;
-  };
+  console.log(params.documentId)
 
-  const document = useQuery(api.documents.getById, {
-    documentId: params.documentId as Id<"documents">,
-  });
+  const document = useQuery(
+    api.documents.getById,
+    !!params.documentId  ? { documentId: params.documentId as Id<"documents"> } : "skip",
+  )
 
   if (document === undefined) {
     return (
-      <nav className="bg-background sticky dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center justify-between">
+      <nav className="h-[--header-height] bg-background sticky top-0 dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center gap-x-4">
         <Title.Skeleton />
         <div className="flex items-center gap-x-2">
           <Menu.Skeleton />
         </div>
       </nav>
     );
-  };
-
-  if (document === null) {
-    return null;
   }
 
   return (
     <>
-      <nav className="h-[--header-height] bg-background dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center gap-x-4">
+      <nav className="h-[--header-height] bg-background sticky top-0 dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center gap-x-4">
         <div className="flex h-[--header-height] w-full items-center gap-2 px-4">
           <Button
             className="h-8 w-8"

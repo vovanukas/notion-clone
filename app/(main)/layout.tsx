@@ -1,11 +1,8 @@
 "use client";
 
-import { useParams } from "next/navigation";
-
 import { Spinner } from "@/components/spinner";
 import { useConvexAuth } from "convex/react";
 import { redirect } from "next/navigation";
-import { Navigation } from "./_components/navigation";
 import { AppSidebar } from "./_components/app-sidebar";
 import { SearchCommand } from "@/components/search-command";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -17,7 +14,6 @@ const MainLayout = ({
     children: React.ReactNode;
 }) => {
     const { isAuthenticated, isLoading } = useConvexAuth();
-    const params = useParams();
 
     if (isLoading) {
         return (
@@ -34,7 +30,6 @@ const MainLayout = ({
       <div className="[--header-height:calc(theme(spacing.14))]">
         <SidebarProvider className="flex flex-col">
           <Navbar />
-          {/* <Navigation /> */}
           <div className="flex flex-1">
             <AppSidebar />
             <SidebarInset>

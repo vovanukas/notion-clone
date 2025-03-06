@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronsLeftRight, LogOut, Plus } from "lucide-react";
+import { ChevronsLeftRight, LogOut } from "lucide-react";
 import { SignOutButton, useUser } from "@clerk/clerk-react";
 
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
@@ -11,7 +11,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { WebsiteSelector } from "./website-selector";
 
 export const UserItem = () => {
   const { user } = useUser();
@@ -57,17 +56,12 @@ export const UserItem = () => {
             </div>
           </div>
         </div>
-        <WebsiteSelector />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           asChild
           onClick={() => {}}
           className="w-full cursor-pointer text-muted-foreground"
         >
-          <div className="flex items-center">
-            <Plus className="h-4 w-4" />
-            <span>Create new website</span>
-          </div>
         </DropdownMenuItem>
         <DropdownMenuItem
           asChild
