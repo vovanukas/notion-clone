@@ -1,3 +1,4 @@
+// page.tsx
 "use client";
 
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -8,6 +9,7 @@ import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
 import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useCallback, use } from "react";
+import matter from "gray-matter";  // Import gray-matter
 
 interface FilePathPageProps {
   params: Promise<{
@@ -23,6 +25,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<any>(null);
 
   const document = useQuery(api.documents.getById, useMemo(() => ({
     documentId: documentId,
@@ -38,9 +41,10 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         id: documentId,
         path: `content/${filePathString}`,
       });
-      const contentSections = fileContent.split('---');
-      const actualContent = contentSections[contentSections.length - 1].trim();
-      setContent(fileContent);
+      // Parse frontmatter
+      const { data, content: actualContent } = matter(fileContent);
+      setContent(actualContent.trim());
+      setMetadata(data);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -81,11 +85,13 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     return <div>Not Found...</div>;
   }
 
+  const coverImageUrl = `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static${metadata?.featured_image}`;
+
   return (
     <div className="pb-40">
-      <Cover url={document.coverImage} />
+      {metadata?.featured_image && <Cover url={coverImageUrl} />}
       <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-        <Toolbar initialData={} />
+        <Toolbar initialData={{ ...document, title: metadata?.title || document.title }} />
         <Editor onChange={onChange} initialContent={content} editable={true} />
       </div>
     </div>

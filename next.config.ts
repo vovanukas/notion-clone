@@ -4,7 +4,9 @@ const nextConfig: NextConfig = {
   /* config options here */
   images: {
     domains: [
-      "files.edgestore.dev"
+      "files.edgestore.dev",
+      "raw.githubusercontent.com",
+      "github.com"
     ]
   }
 };
