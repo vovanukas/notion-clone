@@ -291,18 +291,20 @@ export const encryptAndPublishSecret = action({
     },
 });
 
-export const fetchAndReturnConfigToml = action({
+export const fetchAndReturnGithubFileContent = action({
   args: {
     id: v.id("documents"),
+    path: v.string(),
   },
   handler: async (ctx, args) => {
     try {
       const response = await octokit.repos.getContent({
         owner: 'hugotion',
         repo: args.id,
-        path: 'config.toml',
+        path: args.path,
       });
 
+      console.log(response.data)
       if ('content' in response.data && typeof response.data.content === 'string') {
         const base64DecodedContent = Buffer.from(response.data.content, 'base64').toString('utf8');
 
@@ -344,6 +346,45 @@ export const parseAndSaveSettingsObject = action({
       });
     } else {
       throw new Error("The path is not a file or does not exist.");
+    }
+  }
+});
+
+export const fetchGitHubFileTree = action({
+  args: {
+    id: v.id("documents")
+  },
+  handler: async (_, args) => {
+    try {
+      // Step 1: Get the entire tree of the main branch
+      const { data: mainTree } = await octokit.git.getTree({
+        owner: "hugotion",
+        repo: args.id,
+        tree_sha: "main",
+        recursive: "false", // Fetch only the top-level directories
+      });
+
+      // Step 2: Find the SHA of the "content" folder
+      const contentFolder = mainTree.tree.find((item: any) =>
+        item.path === "content" && item.type === "tree"
+      );
+
+      if (!contentFolder || !contentFolder.sha) {
+        throw new Error("Content folder not found");
+      }
+
+      // Step 3: Fetch the tree for the "content" directory using the SHA
+      const { data: contentTree } = await octokit.git.getTree({
+        owner: "hugotion",
+        repo: args.id,
+        tree_sha: contentFolder.sha,
+        recursive: "true", // Now we fetch inside the content folder
+      });
+
+      return contentTree.tree;
+    } catch (error) {
+      console.error("Error fetching GitHub content folder tree:", error);
+      throw new Error("Failed to fetch GitHub content folder tree");
     }
   }
 });

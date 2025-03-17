@@ -52,7 +52,7 @@ export const archive = mutation({
     }
 })
 
-export const getSidebar = query({
+export const getWebsites = query({
     args: {
         parentDocument: v.optional(v.id("documents"))
     },

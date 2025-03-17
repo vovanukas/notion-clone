@@ -8,14 +8,15 @@ import "@blocknote/mantine/style.css";
 
 import { useTheme } from "next-themes";
 import { useEdgeStore } from "@/lib/edgestore";
+import { useEffect } from "react";
 
 interface EditorProps {
     onChange: (value: string) => void;
-    initialContent?: string;
+    initialContent: string;
     editable?: boolean;
 }
 
-const Editor = ({onChange, initialContent, editable}: EditorProps) => {
+const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     const { resolvedTheme } = useTheme();
     const { edgestore } = useEdgeStore();
 
@@ -28,9 +29,16 @@ const Editor = ({onChange, initialContent, editable}: EditorProps) => {
     }
 
     const editor: BlockNoteEditor = useCreateBlockNote({
-        initialContent: initialContent ? JSON.parse(initialContent) as PartialBlock[]: undefined,
         uploadFile: handleUpload
-    })
+    });
+
+    useEffect(() => {
+        async function parseAndSetContent() {
+            const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+            editor.replaceBlocks(editor.document, blocks);
+        }
+        parseAndSetContent();
+    }, [editor, initialContent]);
 
     return <div>
         <BlockNoteView

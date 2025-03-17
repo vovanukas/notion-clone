@@ -2,7 +2,7 @@
 
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
 import { Item } from "./item";
 import { cn } from "@/lib/utils";
@@ -16,12 +16,12 @@ interface DocumentListProps {
 }
 
 export const DocumentList = ({
-    parentDocumentId,
     level = 0
 }: DocumentListProps) => {
     const params = useParams();
     const router = useRouter();
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    const fetchRepoTree = useAction(api.github.fetchRepoTree);
 
     const onExpand = (documentId: string) => {
         setExpanded(prevExpanded => ({
@@ -30,15 +30,18 @@ export const DocumentList = ({
         }));
     };
 
-    const documents = useQuery(api.documents.getSidebar, {
-        parentDocument: parentDocumentId
+
+    const repoTree = fetchRepoTree({
+        repoName: params.documentId as Id<"documents">
     });
+
+    console.log(repoTree);
 
     const onRedirect = (documentId: string) => {
         router.push(`/documents/${documentId}`);
     };
 
-    if (documents === undefined) {
+    if (repoTree === undefined) {
         return (
             <>
                 <Item.Skeleton level={level} />

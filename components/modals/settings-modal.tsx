@@ -25,7 +25,7 @@ export const SettingsModal = () => {
   const [config, setConfig] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchAndReturnConfigToml = useAction(api.github.fetchAndReturnConfigToml);
+  const fetchAndReturnConfigToml = useAction(api.github.fetchAndReturnGithubFileContent);
   const parseAndSaveSettingsObject = useAction(api.github.parseAndSaveSettingsObject);
 
   const id = params.documentId as Id<"documents">;
@@ -35,6 +35,7 @@ export const SettingsModal = () => {
       try {
         const config = await fetchAndReturnConfigToml({
           id: id,
+          path: "config.toml",
         });
         setConfig(config);
       } catch (err) {

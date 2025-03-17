@@ -18,22 +18,43 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useParams, useRouter } from "next/navigation"
+import { useAction, useMutation, useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { Id } from "@/convex/_generated/dataModel"
+import { Icon } from "@radix-ui/react-select"
+import { toast } from "sonner"
 
-export function WebsiteSwitcher({
-  teams,
-}: {
-  teams: {
-    name: string
-    logo: React.ElementType
-    plan: string
-  }[]
-}) {
+export const WebsiteSwitcher = () => {
+  const params = useParams();
+  const router = useRouter();
   const { isMobile } = useSidebar()
-  const [activeTeam, setActiveTeam] = React.useState(teams[0])
 
-  if (!activeTeam) {
-    return null
-  }
+  const create = useMutation(api.documents.create);
+  const createRepo = useAction(api.github.createRepo);
+
+  const documents = useQuery(api.documents.getWebsites, {});
+  const currentDocument = useQuery(
+    api.documents.getById,
+    !!params.documentId  ? { documentId: params.documentId as Id<"documents"> } : "skip",
+  )
+
+  const onRedirect = (documentId: string) => {
+    router.push(`/documents/${documentId}`);
+  };
+
+  const handleCreate = () => {
+    const promise = create({ title: "Untitled" }).then((documentId) => {
+      router.push(`/documents/${documentId}`);
+      return createRepo({ repoName: documentId });
+    });
+
+    toast.promise(promise, {
+      loading: "Creating your website...",
+      success: "New website created!",
+      error: "Failed to create a new website.",
+    });
+  };
 
   return (
     <SidebarMenu>
@@ -45,13 +66,13 @@ export function WebsiteSwitcher({
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <activeTeam.logo className="size-4" />
+                {currentDocument?.icon ? currentDocument.icon : <Icon />}
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">
-                  {activeTeam.name}
+                  {currentDocument?.title}
                 </span>
-                <span className="truncate text-xs">{activeTeam.plan}</span>
+                <span className="truncate text-xs">Team Plan</span>
               </div>
               <ChevronsUpDown className="ml-auto" />
             </SidebarMenuButton>
@@ -63,27 +84,31 @@ export function WebsiteSwitcher({
             sideOffset={4}
           >
             <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Teams
+              Websites
             </DropdownMenuLabel>
-            {teams.map((team, index) => (
+            {documents?.map((document, index) => (
               <DropdownMenuItem
-                key={team.name}
-                onClick={() => setActiveTeam(team)}
+                key={document._id}
+                title={document.title}
+                onClick={() => onRedirect(document._id)}
                 className="gap-2 p-2"
               >
                 <div className="flex size-6 items-center justify-center rounded-sm border">
-                  <team.logo className="size-4 shrink-0" />
+                  {document?.icon ? document.icon : <Icon />}
                 </div>
-                {team.name}
+                {document.title}
                 <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2 p-2">
+            <DropdownMenuItem
+              className="gap-2 p-2"
+              onClick={handleCreate}
+            >
               <div className="flex size-6 items-center justify-center rounded-md border bg-background">
                 <Plus className="size-4" />
               </div>
-              <div className="font-medium text-muted-foreground">Add team</div>
+              <div className="font-medium text-muted-foreground">Add website</div>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
