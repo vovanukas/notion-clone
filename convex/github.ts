@@ -138,80 +138,43 @@ export const publishPage = action({
 
       if (error.status === 404) {
         const deployWorkflowContent = `
-# Sample workflow for building and deploying a Hugo site to GitHub Pages
-name: Deploy Hugo site to Pages
+name: GitHub Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
-    branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
-# Default to bash
-defaults:
-  run:
-    shell: bash
+    branches:
+      - main  # Set a branch name to trigger deployment
+  pull_request:
 
 jobs:
-  # Build job
-  build:
-    runs-on: ubuntu-latest
-    env:
-      HUGO_VERSION: 0.128.0
-    steps:
-      - name: Install Hugo CLI
-        run: |
-          wget -O \${{ runner.temp }}/hugo.deb https://github.com/gohugoio/hugo/releases/download/v\${HUGO_VERSION}/hugo_extended_\${HUGO_VERSION}_linux-amd64.deb \
-          && sudo dpkg -i \${{ runner.temp }}/hugo.deb
-      - name: Install Dart Sass
-        run: sudo snap install dart-sass
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Setup Pages
-        id: pages
-        uses: actions/configure-pages@v5
-      - name: Install Node.js dependencies
-        run: "[[ -f package-lock.json || -f npm-shrinkwrap.json ]] && npm ci || true"
-      - name: Build with Hugo
-        env:
-          HUGO_CACHEDIR: \${{ runner.temp }}/hugo_cache
-          HUGO_ENVIRONMENT: production
-        run: |
-          hugo \
-            --minify \
-            --baseURL "\${{ steps.pages.outputs.base_url }}/"
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./public
-
-  # Deployment job
   deploy:
-    environment:
-      name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: \${{ github.workflow }}-\${{ github.ref }}
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+        with:
+          submodules: true  # Fetch Hugo themes (true OR recursive)
+          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.128.0'
+          extended: true
+
+      - name: Build
+        run: hugo --minify
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: \${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+
 
   inform:
     environment:
@@ -278,16 +241,13 @@ export const encryptAndPublishSecret = action({
       return output;
     });
 
-    const response = await octokit.rest.actions.createOrUpdateRepoSecret({
+    await octokit.rest.actions.createOrUpdateRepoSecret({
       owner: 'hugotion',
       repo: args.id,
       secret_name: 'CALLBACK_BEARER',
       encrypted_value: output,
       key_id: publicGithubKey.data.key_id,
     });
-    
-    console.log(response.status + ' ' + response.data);
-    console.log(`${args.secret} secret sent to github repo ${output}`);
     },
 });
 
@@ -303,8 +263,6 @@ export const fetchAndReturnGithubFileContent = action({
         repo: args.id,
         path: args.path,
       });
-
-      console.log(response.data)
       if ('content' in response.data && typeof response.data.content === 'string') {
         const base64DecodedContent = Buffer.from(response.data.content, 'base64').toString('utf8');
 
@@ -380,11 +338,34 @@ export const fetchGitHubFileTree = action({
         tree_sha: contentFolder.sha,
         recursive: "true", // Now we fetch inside the content folder
       });
-
+      console.log(contentTree.tree)
       return contentTree.tree;
     } catch (error) {
       console.error("Error fetching GitHub content folder tree:", error);
       throw new Error("Failed to fetch GitHub content folder tree");
+    }
+  }
+});
+
+export const updateFileContent = action({
+  args: {
+    id: v.id("documents"),
+    filesToUpdate: v.any(),
+  },
+  handler: async (_, args) => {
+    console.log("Started updating files")
+    console.log(args.filesToUpdate)
+    for (const file of args.filesToUpdate) {
+      if (file.content) {
+        const response = await octokit.repos.createOrUpdateFileContents({
+          owner: "hugotion",
+          repo: args.id,
+          path: `content/${file.path}`,
+          message: `Updated content of: ${file.path}`,
+          content: Buffer.from(file.content).toString("base64"),
+          ...(file.sha && { sha: file.sha })
+        });
+      }
     }
   }
 });

@@ -1,16 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-
+import React, { useEffect } from "react";
 import { useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-
 import { useSearch } from "@/hooks/use-search";
 import { useSettings } from "@/hooks/use-settings";
 import { useParams, useRouter } from "next/navigation";
-
+import { useAppSidebar } from "@/hooks/use-app-sidebar";
 import { toast } from "sonner";
-
 import {
   ChevronRight,
   File,
@@ -38,30 +35,22 @@ import {
 } from "@/components/ui/sidebar";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TrashBox } from "./trash-box";
 import { WebsiteSwitcher } from "./website-switcher";
-import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { CollapsibleContent } from "@radix-ui/react-collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Id } from "@/convex/_generated/dataModel";
 
 interface TreeNode {
+  name?: string;
   path?: string;
-  mode?: string;
   type?: string;
+  children?: TreeNode[];
   sha?: string;
-  size?: number;
-  url?: string;
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [treeData, setTreeData] = useState<{ tree: TreeNode[] }>({ tree: [] });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+  const { treeData, setItems, isLoading, setIsLoading, error, setError } = useAppSidebar();
 
   const settings = useSettings();
   const search = useSearch();
@@ -74,18 +63,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   useEffect(() => {
     async function loadFileTree() {
-      if (!params.documentId) {
-        return;
-      }
+      if (!params.documentId) return;
 
       try {
         setIsLoading(true);
         const result = await fetchContentTree({
           id: params.documentId as Id<"documents">,
         });
-
-        // Process the raw GitHub data into our tree structure
-        setTreeData({ tree: result });
+        setItems(result);
         setError(null);
       } catch (err) {
         console.error("Failed to fetch GitHub file tree:", err);
@@ -94,9 +79,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         setIsLoading(false);
       }
     }
-
     loadFileTree();
-  }, [fetchContentTree, params.documentId]);
+  }, [fetchContentTree, params.documentId, setIsLoading, setItems, setError]);
 
   const handleCreate = () => {
     const promise = create({ title: "Untitled" }).then((documentId) => {
@@ -122,12 +106,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         {params.documentId && (
           <>
-            <Item
-              label="Search"
-              icon={Search}
-              isSearch
-              onClick={search.onOpen}
-            />
+            <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
             <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
             <Item onClick={handleCreate} label="New Page" icon={PlusCircle} />
             <Popover>
@@ -150,8 +129,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <div className="p-4 text-sm text-destructive">{error}</div>
                 ) : (
                   <SidebarMenu>
-                    {treeData.tree.map((item, index) => (
-                      <Tree key={index} item={item} />
+                    {treeData.map((item) => (
+                      <Tree key={item.sha} item={item} />
                     ))}
                   </SidebarMenu>
                 )}
@@ -170,8 +149,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 }
 
 function Tree({ item }: { item: TreeNode }) {
-  console.log(item);
-  const { type, path } = item;
+  const { type, path, name, children } = item;
   const router = useRouter();
   const params = useParams();
 
@@ -182,35 +160,38 @@ function Tree({ item }: { item: TreeNode }) {
   if (type === "blob") {
     return (
       <SidebarMenuButton
-        onClick={() => onRedirect(params.documentId)}
+        onClick={() => onRedirect(params.documentId as Id<"documents">)}
         className="data-[active=true]:bg-transparent"
       >
         <File />
-        {path}
+        {name}
       </SidebarMenuButton>
-    )
+    );
   }
-  return (
-    <SidebarMenuItem>
-      <Collapsible
-        className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
-        defaultOpen={false}
-      >
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton>
-            <ChevronRight className="transition-transform" />
-            <Folder />
-            {path}
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          {/* <SidebarMenuSub>
-            {items.map((subItem, index) => (
-              <Tree key={index} item={subItem} />
-            ))}
-          </SidebarMenuSub> */}
-        </CollapsibleContent>
-      </Collapsible>
-    </SidebarMenuItem>
-  )
+
+  if (children) {
+    return (
+      <SidebarMenuItem>
+        <Collapsible
+          className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
+          defaultOpen={false}
+        >
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton>
+              <ChevronRight className="transition-transform" />
+              <Folder />
+              {name}
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenuSub>
+              {children.map((child) => (
+                <Tree key={child.sha} item={child} />
+              ))}
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </Collapsible>
+      </SidebarMenuItem>
+    );
+  }
 }
