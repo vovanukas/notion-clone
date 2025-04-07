@@ -148,15 +148,19 @@ on:
 
 jobs:
   deploy:
+    environment:
+      name: github-pages
     runs-on: ubuntu-22.04
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
     concurrency:
       group: \${{ github.workflow }}-\${{ github.ref }}
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true  # Fetch Hugo themes (true OR recursive)
+          submodules: recursive  # Fetch Hugo themes (true OR recursive)
           fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
 
       - name: Setup Hugo
@@ -168,21 +172,15 @@ jobs:
       - name: Build
         run: hugo --minify
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
-        if: github.ref == 'refs/heads/main'
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: \${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./public
+          path: ./public
 
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
-  inform:
-    environment:
-      name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: deploy
-    steps:
       - name: Workflow Webhook Action
         uses: distributhor/workflow-webhook@v3
         with:
@@ -338,7 +336,6 @@ export const fetchGitHubFileTree = action({
         tree_sha: contentFolder.sha,
         recursive: "true", // Now we fetch inside the content folder
       });
-      console.log(contentTree.tree)
       return contentTree.tree;
     } catch (error) {
       console.error("Error fetching GitHub content folder tree:", error);
@@ -353,19 +350,24 @@ export const updateFileContent = action({
     filesToUpdate: v.any(),
   },
   handler: async (_, args) => {
-    console.log("Started updating files")
-    console.log(args.filesToUpdate)
     for (const file of args.filesToUpdate) {
-      if (file.content) {
-        const response = await octokit.repos.createOrUpdateFileContents({
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: `content/${file.path}`,
+        });
+
+        const data = response.data;
+        const fileData = Array.isArray(data) ? data.find(f => f.path === `content/${file.path}`) : data;
+
+        await octokit.repos.createOrUpdateFileContents({
           owner: "hugotion",
           repo: args.id,
           path: `content/${file.path}`,
           message: `Updated content of: ${file.path}`,
           content: Buffer.from(file.content).toString("base64"),
-          ...(file.sha && { sha: file.sha })
-        });
-      }
+          sha: fileData?.sha
+        })
     }
   }
 });

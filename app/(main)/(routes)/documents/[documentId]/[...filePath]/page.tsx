@@ -32,7 +32,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
   const [error, setError] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<any>(null);
 
-  const { addChangedFile, changedFiles } = useUnsavedChanges();
+  const { addChangedFile } = useUnsavedChanges();
   const { getNodeByPath } = useAppSidebar();
   const currentFileNode = useMemo(() => getNodeByPath(filePathString), [filePathString, getNodeByPath]);
 
