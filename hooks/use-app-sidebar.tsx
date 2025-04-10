@@ -1,30 +1,20 @@
 import { create } from "zustand";
+import { HugoFileNode } from "@/types/hugo";
 
-interface GitHubList {
-    path: string;
-    mode?: string;
-    type?: string;
-    sha?: string;
-    size?: number;
-    url?: string;
-}
-
-interface TreeNode {
-  name?: string;
-  path?: string;
-  type?: string;
-  children?: TreeNode[];
-  sha?: string;
-}
+type GitHubList = {
+  path: string;
+  type: 'tree' | 'blob';
+  sha: string;
+};
 
 type AppSidebarStore = {
   items: GitHubList[];
-  treeData: TreeNode[];
+  treeData: HugoFileNode[];
   isLoading: boolean;
   error: string | null;
 
   setItems: (items: GitHubList[]) => void;
-  getNodeByPath: (path: string) => TreeNode | undefined;
+  getNodeByPath: (path: string) => HugoFileNode | undefined;
   buildTree: () => void;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -37,13 +27,13 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
   isLoading: false,
   error: null,
 
-  setItems: (items: GitHubList[]) => {
+  setItems: (items) => {
     set({ items });
     get().buildTree();
   },
 
-  getNodeByPath: (path: string) => {
-    const findNode = (nodes: TreeNode[], path: string): TreeNode | undefined => {
+  getNodeByPath: (path) => {
+    const findNode = (nodes: HugoFileNode[], path: string): HugoFileNode | undefined => {
       for (const node of nodes) {
         if (node.path === path) {
           return node;
@@ -63,16 +53,16 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
 
   buildTree: () => {
     const { items } = get();
-    const root: TreeNode[] = [];
+    const root: HugoFileNode[] = [];
 
     const sortedItems = [...items].sort((a, b) => a.path.localeCompare(b.path));
-    const nodeMap: Record<string, TreeNode> = {};
+    const nodeMap: Record<string, HugoFileNode> = {};
 
     sortedItems.forEach((item) => {
       const pathParts = item.path.split("/");
       const name = pathParts[pathParts.length - 1];
 
-      const node: TreeNode = {
+      const node: HugoFileNode = {
         name,
         path: item.path,
         type: item.type,
@@ -101,9 +91,9 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
     set({ treeData: root });
   },
 
-  setIsLoading: (isLoading: boolean) => set({ isLoading }),
+  setIsLoading: (isLoading) => set({ isLoading }),
 
-  setError: (error: string | null) => set({ error }),
+  setError: (error) => set({ error }),
 
   resetSidebarState: () =>
     set({

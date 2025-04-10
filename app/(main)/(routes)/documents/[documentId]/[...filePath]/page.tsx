@@ -13,6 +13,7 @@ import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useAppSidebar } from "@/hooks/use-app-sidebar";
 import { useCreateBlockNote } from "@blocknote/react";
 import { PartialBlock } from "@blocknote/core";
+import { HugoFrontmatter } from "@/types/hugo";
 
 
 interface FilePathPageProps {
@@ -30,7 +31,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [metadata, setMetadata] = useState<any>(null);
+  const [metadata, setMetadata] = useState<HugoFrontmatter | null>(null);
 
   const { addChangedFile } = useUnsavedChanges();
   const { getNodeByPath } = useAppSidebar();
@@ -53,7 +54,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
       });
       const { data, content: actualContent } = matter(fileContent);
       setContent(actualContent.trim());
-      setMetadata(data);
+      setMetadata(data as HugoFrontmatter);
     } catch (err) {
       setError((err as Error).message);
     } finally {

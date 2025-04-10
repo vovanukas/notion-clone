@@ -350,6 +350,7 @@ export const updateFileContent = action({
     filesToUpdate: v.any(),
   },
   handler: async (_, args) => {
+    console.log(args.filesToUpdate);
     for (const file of args.filesToUpdate) {
         const response = await octokit.repos.getContent({
           owner: "hugotion",
