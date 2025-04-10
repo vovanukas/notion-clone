@@ -1,60 +1,69 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { ImageIcon, Smile, X } from "lucide-react";
 import { useMutation } from "convex/react";
 import TextareaAutosize from "react-textarea-autosize";
 
 import { Doc } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
-
 import { IconPicker } from "./icon-picker";
 import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
 
 interface ToolbarProps {
     initialData: Doc<"documents">;
-    preview?:boolean;
+    preview?: boolean;
+    onTitleChange: (value: string, isFinal: boolean) => void;
 }
 
 export const Toolbar = ({
     initialData,
-    preview
+    preview,
+    onTitleChange
 }: ToolbarProps) => {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [value, setValue] = useState(initialData.title);
+    const [pendingValue, setPendingValue] = useState(initialData.title);
 
     const update = useMutation(api.documents.update);
     const removeIcon = useMutation(api.documents.removeIcon);
-
     const coverImage = useCoverImage();
+
+    useEffect(() => {
+        setValue(initialData.title);
+        setPendingValue(initialData.title);
+    }, [initialData.title]);
 
     const enableInput = () => {
         if (preview) return;
 
         setIsEditing(true);
         setTimeout(() => {
-            setValue(initialData.title);
+            setPendingValue(initialData.title);
             inputRef.current?.focus();
-        }, 0)
+        }, 0);
     };
 
     const disableInput = () => setIsEditing(false);
 
-    const onInput = (value:string) => {
-        setValue(value);
-        update({
-            id: initialData._id,
-            title: value || "Untitled"
-        });
+    const handleTitleChange = (newValue: string) => {
+        setPendingValue(newValue);
+        onTitleChange(newValue, false);
     };
 
-    const onKeyDown = (
-        event: React.KeyboardEvent<HTMLTextAreaElement>
-    ) => {
+    const handleBlur = () => {
+        onTitleChange(pendingValue, true);
+        setValue(pendingValue);
+        disableInput();
+    };
+
+    const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if(event.key === "Enter") {
             event.preventDefault();
+            onTitleChange(pendingValue, true);
+            setValue(pendingValue);
             disableInput();
         }
     };
@@ -63,14 +72,14 @@ export const Toolbar = ({
         update({
             id: initialData._id,
             icon,
-        })
-    }
+        });
+    };
 
     const onRemoveIcon = () => {
         removeIcon({
             id: initialData._id
-        })
-    }
+        });
+    };
 
     return (
         <div className="pl-[54px] group relative">
@@ -124,10 +133,10 @@ export const Toolbar = ({
             {isEditing && !preview ? (
                 <TextareaAutosize
                     ref={inputRef}
-                    onBlur={disableInput}
+                    onBlur={handleBlur}
                     onKeyDown={onKeyDown}
-                    value={value}
-                    onChange={(e) => onInput(e.target.value)}
+                    value={pendingValue}
+                    onChange={(e) => handleTitleChange(e.target.value)}
                     className="text-5xl bg-transparent font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF] resize-none"
                 />
             ) : (
@@ -135,9 +144,9 @@ export const Toolbar = ({
                     onClick={enableInput}
                     className="pb-[11.5px] text-5xl font-bold break-words outline-none text-[#3F3F3F] dark:text-[#CFCFCF]"
                 >
-                    {initialData.title}
+                    {value}
                 </div>
             )}
         </div>
-    )
-}
+    );
+};
