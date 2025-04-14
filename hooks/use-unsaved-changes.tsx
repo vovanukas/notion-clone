@@ -1,17 +1,15 @@
-import { create } from "zustand";
+"use client";
 
-type ChangedFile = {
-  path: string;
-  content: string;
+import { create } from "zustand";
+import { FileContent } from "@/types/hugo";
+
+type ChangedFile = FileContent & {
   title?: string;
-  sha?: string;
 };
 
 type UnsavedChangesStore = {
   changedFiles: ChangedFile[];
-  addChangedFile: (path: string, content: string, sha?: string, title?: string) => void;
-  updateFileContent: (path: string, content: string) => void;
-  updateTitle: (path: string, title: string) => void;
+  updateFile: (path: string, updates: Partial<Omit<ChangedFile, 'path'>>) => void;
   resetChangedFiles: () => void;
   hasUnsavedChanges: () => boolean;
 };
@@ -19,52 +17,43 @@ type UnsavedChangesStore = {
 export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
   changedFiles: [],
   
-  addChangedFile: (path, content, sha, title) =>
+  updateFile: (path, updates) =>
     set((state) => {
       const existingFile = state.changedFiles.find(file => file.path === path);
-      if (existingFile) {
-        // If path already exists, update its content and sha
-        existingFile.content = content;
-        existingFile.sha = sha;
-        if (title !== undefined) {
-          existingFile.title = title;
+
+      // Process updates to handle dates and other special types
+      const processedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+        if (value instanceof Date) {
+          acc[key] = value.toISOString();
+        } else {
+          acc[key] = value;
         }
-        return { changedFiles: [...state.changedFiles] }; // Forces a re-render even if objects are technically not new
-      } else {
-        return {
-          changedFiles: [...state.changedFiles, { path, content, sha, title }],
-        };
-      }
-    }),
+        return acc;
+      }, {} as Record<string, any>);
 
-  updateFileContent: (path, content) =>
-    set((state) => {
-      return {
-        changedFiles: state.changedFiles.map(file =>
-          file.path === path ? { ...file, content } : file
-        ),
-      };
-    }),
-
-  updateTitle: (path, title) =>
-    set((state) => {
-      const existingFile = state.changedFiles.find(file => file.path === path);
       if (existingFile) {
-        existingFile.title = title;
-        return { changedFiles: [...state.changedFiles] };
+        Object.assign(existingFile, processedUpdates);
+        const newState = { changedFiles: [...state.changedFiles] };
+        console.log('Updated file:', newState.changedFiles);
+        return newState;
       } else {
-        return {
-          changedFiles: [...state.changedFiles, { path, content: '', title }],
+        const newFile: ChangedFile = {
+          path,
+          content: '',
+          ...processedUpdates
         };
+        const newState = {
+          changedFiles: [...state.changedFiles, newFile],
+        };
+        console.log('Added new file:', newState.changedFiles);
+        return newState;
       }
     }),
   
   resetChangedFiles: () => {
     set({ changedFiles: [] });
+    console.log('Reset all changed files');
   },
   
-  hasUnsavedChanges: () => {
-    const hasChanges = get().changedFiles.length > 0;
-    return hasChanges;
-  },
+  hasUnsavedChanges: () => get().changedFiles.length > 0,
 }));

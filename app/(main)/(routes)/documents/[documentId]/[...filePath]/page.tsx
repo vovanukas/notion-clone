@@ -32,7 +32,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const [error, setError] = useState<string | null>(null);
     const [metadata, setMetadata] = useState<HugoFrontmatter | null>(null);
 
-    const { addChangedFile, updateTitle } = useUnsavedChanges();
+    const { updateFile } = useUnsavedChanges();
     const { getNodeByPath } = useAppSidebar();
     const currentFileNode = useMemo(() => getNodeByPath(filePathString), [filePathString, getNodeByPath]);
 
@@ -43,6 +43,16 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const update = useMutation(api.documents.update);
     const Editor = useMemo(() => dynamic(() => import("@/components/editor"), { ssr: false }), []);
     const editor = useCreateBlockNote();
+
+    useEffect(() => {
+        if (!loading && metadata) {
+            updateFile(filePathString, {
+                content,
+                ...metadata,
+                sha: currentFileNode?.sha
+            });
+        }
+    }, [content, metadata, currentFileNode?.sha, updateFile, filePathString, loading]);
 
     const loadContent = useCallback(async () => {
         if (!documentId || !filePath) return;
@@ -69,29 +79,20 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const onChange = useCallback(async (content: string) => {
         const blocks: PartialBlock[] = JSON.parse(content);
         const markdown = await editor.blocksToMarkdownLossy(blocks);
+        setContent(markdown);
+    }, [editor]);
 
-        if(!loading) {
-            addChangedFile(
-                filePathString,
-                markdown,
-                currentFileNode?.sha,
-            );
-        }
-    }, [addChangedFile, filePathString, currentFileNode, editor, loading]);
+    const onTitleChange = useCallback((value: string) => {
+        const newTitle = value || "Untitled";
+        setMetadata(prev => ({ ...prev, title: newTitle }));
 
-    const onTitleChange = useCallback((value: string, isFinal: boolean) => {
         if (document) {
-            const newTitle = value || "Untitled";
-            updateTitle(filePathString, newTitle);
-
-            if (isFinal) {
-                update({
-                    id: document._id,
-                    title: newTitle
-                });
-            }
+            update({
+                id: document._id,
+                title: newTitle
+            });
         }
-    }, [document, updateTitle, filePathString, update]);
+    }, [document, update]);
 
     if (document === undefined || loading) {
         return (

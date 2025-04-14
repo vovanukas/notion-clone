@@ -17,7 +17,7 @@ export interface HugoFrontmatter {
   layout?: string;
   type?: string;
   
-  // Custom fields that might be specific to your theme
+  // Menu configuration
   menu?: {
     main?: {
       weight?: number;
@@ -25,21 +25,20 @@ export interface HugoFrontmatter {
     };
   };
   
-  // Allow for additional custom fields
-  [key: string]: any;
+  // Allow for additional custom fields with proper typing
+  [key: string]: string | string[] | boolean | number | { [key: string]: unknown } | undefined;
+}
+
+// Base interface for file content
+export interface FileContent {
+  path: string;
+  content: string;
+  sha?: string;
 }
 
 // Interface for a complete Hugo content file
-export interface HugoContent {
-  // The parsed frontmatter metadata
+export interface HugoContent extends FileContent {
   metadata: HugoFrontmatter;
-  
-  // The actual content in markdown format
-  content: string;
-  
-  // File information
-  path: string;
-  sha?: string;
 }
 
 // Interface for the file tree structure

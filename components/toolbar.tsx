@@ -14,7 +14,7 @@ import { useCoverImage } from "@/hooks/use-cover-image";
 interface ToolbarProps {
     initialData: Doc<"documents">;
     preview?: boolean;
-    onTitleChange: (value: string, isFinal: boolean) => void;
+    onTitleChange: (value: string) => void;
 }
 
 export const Toolbar = ({
@@ -50,11 +50,11 @@ export const Toolbar = ({
 
     const handleTitleChange = (newValue: string) => {
         setPendingValue(newValue);
-        onTitleChange(newValue, false);
+        onTitleChange(newValue);
     };
 
     const handleBlur = () => {
-        onTitleChange(pendingValue, true);
+        onTitleChange(pendingValue);
         setValue(pendingValue);
         disableInput();
     };
@@ -62,7 +62,7 @@ export const Toolbar = ({
     const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if(event.key === "Enter") {
             event.preventDefault();
-            onTitleChange(pendingValue, true);
+            onTitleChange(pendingValue);
             setValue(pendingValue);
             disableInput();
         }

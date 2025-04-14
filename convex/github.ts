@@ -351,25 +351,30 @@ export const updateFileContent = action({
     filesToUpdate: v.any(),
   },
   handler: async (_, args) => {
-    console.log(args.filesToUpdate);
     for (const file of args.filesToUpdate) {
-        const response = await octokit.repos.getContent({
-          owner: "hugotion",
-          repo: args.id,
-          path: `content/${file.path}`,
-        });
+      const { content, path, ...metadata } = file;
+      // Get the current file content to preserve the SHA
+      const response = await octokit.repos.getContent({
+        owner: "hugotion",
+        repo: args.id,
+        path: `content/${path}`,
+      });
 
-        const data = response.data;
-        const fileData = Array.isArray(data) ? data.find(f => f.path === `content/${file.path}`) : data;
+      const data = response.data;
+      const fileData = Array.isArray(data) ? data.find(f => f.path === `content/${path}`) : data;
 
-        await octokit.repos.createOrUpdateFileContents({
-          owner: "hugotion",
-          repo: args.id,
-          path: `content/${file.path}`,
-          message: `Updated content of: ${file.path}`,
-          content: Buffer.from(file.content).toString("base64"),
-          sha: fileData?.sha
-        })
+      // Create the frontmatter string
+      const frontmatter = matter.stringify(content, metadata);
+
+      // Update the file with the new content
+      await octokit.repos.createOrUpdateFileContents({
+        owner: "hugotion",
+        repo: args.id,
+        path: `content/${path}`,
+        message: `Updated content of: ${path}`,
+        content: Buffer.from(frontmatter).toString("base64"),
+        sha: fileData?.sha
+      });
     }
   }
 });
