@@ -10,9 +10,10 @@ import { api } from "@/convex/_generated/api";
 import { IconPicker } from "./icon-picker";
 import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
+import { HugoFrontmatter } from "@/types/hugo";
 
 interface ToolbarProps {
-    initialData: Doc<"documents">;
+    initialData: HugoFrontmatter;
     preview?: boolean;
     onTitleChange: (value: string) => void;
 }
@@ -118,7 +119,7 @@ export const Toolbar = ({
                         </Button>
                     </IconPicker>
                 )}
-                {!initialData.coverImage && !preview && (
+                {!initialData.featured_image && !preview && (
                     <Button 
                         onClick={coverImage.onOpen}
                         className="text-muted-foreground text-xs"

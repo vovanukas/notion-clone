@@ -122,7 +122,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
                 <Toolbar
                     onTitleChange={onTitleChange}
-                    initialData={{ ...document, title: metadata?.title || document.title }}
+                    initialData={{ ...document, ...metadata }}
                 />
                 <Editor onChange={onChange} initialContent={content} editable={true} />
             </div>
