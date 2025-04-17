@@ -114,7 +114,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         return <div>Not Found...</div>;
     }
 
-    const coverImageUrl = `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static${metadata?.featured_image}`;
+    const coverImageUrl = `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/${metadata?.featured_image}`;
 
     return (
         <div className="pb-40">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useEdgeStore } from "@/lib/edgestore";
 import {
     Dialog,
     DialogContent,
@@ -9,46 +8,60 @@ import {
 } from "@/components/ui/dialog";
 
 import { useCoverImage } from "@/hooks/use-cover-image";
-import { SingleImageDropzone } from "@/components/single-image-dropzone";
-import { useMutation } from "convex/react";
+// import { SingleImageDropzone } from "@/components/single-image-dropzone";
+import { FilePond, registerPlugin } from "react-filepond";
+import { FilePondFile, FilePondErrorDescription } from 'filepond';
+import FilePondPluginFileEncode from 'filepond-plugin-file-encode';
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
+import 'filepond/dist/filepond.min.css';
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+
 
 export const CoverImageModal = () => {
-    const [file, setFile] = useState<File>();
+    registerPlugin(FilePondPluginFileEncode);
+    const { documentId, filePath } = useParams();
+    const [files, setFiles] = useState<(string | Blob | File)[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { edgestore } = useEdgeStore();
     const coverImage = useCoverImage();
-    const update = useMutation(api.documents.update);
-    const params = useParams();
+    const uploadImage = useAction(api.github.uploadImage);
+    const { updateFile } = useUnsavedChanges();
 
     const onClose = () => {
-        setFile(undefined);
+        setFiles([]);
         setIsSubmitting(false);
         coverImage.onClose();
     };
 
-    const onChange = async (file?: File) => {
-        if (file) {
+    const onChange = async (error: FilePondErrorDescription | null, fileItem: FilePondFile) => {
+        if (fileItem && !error) {
             setIsSubmitting(true);
-            setFile(file);
-
-            const res = await edgestore.publicFiles.upload({
-                file,
-                options: {
-                    replaceTargetUrl: coverImage.url,
+            console.log(fileItem);
+            try {
+                const res = await uploadImage({
+                    id: documentId as Id<"documents">,
+                    file: fileItem.getFileEncodeBase64String(),
+                    filename: fileItem.filename
+                });
+                if (res && res.content && res.content.path) {
+                    const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+                    updateFile(
+                        filePathString as string,
+                        {
+                            featured_image: res.content.path
+                        }
+                    );
                 }
-            })
-
-            await update({
-                id: params.documentId as Id<"documents">,
-                coverImage: res.url
-            });
-
-            onClose();
-        };
+                onClose();
+                setIsSubmitting(false);
+            } catch (error) {
+                console.error("Failed to upload image:", error);
+                setIsSubmitting(false);
+            }
+        }
     };
 
     return (
@@ -59,11 +72,20 @@ export const CoverImageModal = () => {
                         Cover Image
                     </h3>
                 </DialogHeader>
-                <SingleImageDropzone 
+                {/* <SingleImageDropzone
                     className="w-full outline-none"
                     disabled={isSubmitting}
                     value={file}
                     onChange={onChange}
+                /> */}
+                <FilePond
+                    files={files}
+                    allowMultiple={false}
+                    onaddfile={onChange}
+                    disabled={isSubmitting}
+                    acceptedFileTypes={['image/*']}
+                    maxFiles={1}
+                    labelIdle='Drag & drop your image or <span class="filepond--label-action">Browse</span>'
                 />
             </DialogContent>
         </Dialog>

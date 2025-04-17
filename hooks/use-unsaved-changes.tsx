@@ -1,11 +1,9 @@
 "use client";
 
 import { create } from "zustand";
-import { FileContent } from "@/types/hugo";
+import { FileContent, HugoFrontmatter } from "@/types/hugo";
 
-type ChangedFile = FileContent & {
-  title?: string;
-};
+type ChangedFile = FileContent & HugoFrontmatter;
 
 type UnsavedChangesStore = {
   changedFiles: ChangedFile[];

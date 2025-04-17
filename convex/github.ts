@@ -378,3 +378,24 @@ export const updateFileContent = action({
     }
   }
 });
+
+export const uploadImage = action({
+  args: {
+    id: v.id("documents"),
+    file: v.string(),
+    filename: v.string(),
+  },
+  handler: async (_, args) => {
+    const response = await octokit.repos.createOrUpdateFileContents({
+      owner: 'hugotion',
+      repo: args.id,
+      path: `static/images/${args.filename}`,
+      message: 'Uploaded image',
+      content: args.file,
+      headers: {
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    return response.data;
+  }
+});
