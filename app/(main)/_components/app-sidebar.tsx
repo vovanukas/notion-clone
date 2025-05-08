@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
 import { useSettings } from "@/hooks/use-settings";
@@ -40,6 +40,8 @@ import { TrashBox } from "./trash-box";
 import { WebsiteSwitcher } from "./website-switcher";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Id } from "@/convex/_generated/dataModel";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/spinner";
 
 interface TreeNode {
   name?: string;
@@ -60,13 +62,17 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const create = useMutation(api.documents.create);
   const createRepo = useAction(api.github.createRepo);
   const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
+  const document = useQuery(api.documents.getById,
+    params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
+  );
 
   useEffect(() => {
     async function loadFileTree() {
-      if (!params.documentId) return;
+      setIsLoading(true);
+
+      if (!params.documentId || !document || document.workflowRunning) return;
 
       try {
-        setIsLoading(true);
         const result = await fetchContentTree({
           id: params.documentId as Id<"documents">,
         });
@@ -80,7 +86,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       }
     }
     loadFileTree();
-  }, [fetchContentTree, params.documentId, setIsLoading, setItems, setError]);
+  }, [fetchContentTree, params.documentId, setIsLoading, setItems, setError, document]);
 
   const handleCreate = () => {
     const promise = create({ title: "Untitled" }).then((documentId) => {
@@ -121,9 +127,16 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             <SidebarGroup>
               <SidebarGroupLabel>Content</SidebarGroupLabel>
               <SidebarGroupContent>
-                {isLoading ? (
-                  <div className="p-4 text-sm text-muted-foreground">
-                    Loading file structure...
+                {isLoading && document?.workflowRunning ? (
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <Spinner />
+                    <div className="mt-2 text-sm">Creating site...</div>
+                  </div>
+                ) : isLoading ? (
+                  <div className="space-y-2 p-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-[90%]" />
+                    <Skeleton className="h-8 w-[80%]" />
                   </div>
                 ) : error ? (
                   <div className="p-4 text-sm text-destructive">{error}</div>

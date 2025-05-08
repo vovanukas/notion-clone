@@ -18,15 +18,20 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Spinner } from "../spinner";
 import Editor from "@monaco-editor/react";
+import { useMutation } from "convex/react";
+import { useRouter } from "next/navigation";
 
 export const SettingsModal = () => {
   const settings = useSettings();
   const params = useParams();
+  const router = useRouter();
   const [config, setConfig] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const fetchAndReturnConfigToml = useAction(api.github.fetchAndReturnGithubFileContent);
   const parseAndSaveSettingsObject = useAction(api.github.parseAndSaveSettingsObject);
+  const remove = useMutation(api.documents.remove);
+  const deleteRepo = useAction(api.github.deleteRepo);
 
   const id = params.documentId as Id<"documents">;
 
@@ -67,6 +72,19 @@ export const SettingsModal = () => {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      settings.onClose();
+      router.push("/documents");
+      await Promise.all([
+        deleteRepo({ id }),
+        remove({ id })
+      ]);
+    } catch (err) {
+      setError("Failed to delete repository: " + (err as Error).message);
+    }
+  };
+
         return (
     <Dialog open={settings.isOpen} onOpenChange={settings.onClose}>
       <DialogContent className="sm:max-w-[800px]">
@@ -92,7 +110,14 @@ export const SettingsModal = () => {
           />
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex justify-between">
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleDelete}
+          >
+            Delete Permanently
+          </Button>
           <Button type="button" onClick={handleSave}>
             Save changes
           </Button>

@@ -4,7 +4,8 @@ import { useState } from "react";
 import {
     Dialog,
     DialogContent,
-    DialogHeader
+    DialogHeader,
+    DialogTitle
 } from "@/components/ui/dialog";
 
 import { useCoverImage } from "@/hooks/use-cover-image";
@@ -14,54 +15,84 @@ import { FilePondFile, FilePondErrorDescription } from 'filepond';
 import FilePondPluginFileEncode from 'filepond-plugin-file-encode';
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import 'filepond/dist/filepond.min.css';
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
+
+const generateUniqueFilename = (originalFilename: string): string => {
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 8);
+    const extension = originalFilename.split('.').pop();
+    const nameWithoutExtension = originalFilename.slice(0, originalFilename.lastIndexOf('.'));
+    return `${nameWithoutExtension}-${timestamp}-${randomString}.${extension}`;
+};
 
 export const CoverImageModal = () => {
     registerPlugin(FilePondPluginFileEncode);
     const { documentId, filePath } = useParams();
-    const [files, setFiles] = useState<(string | Blob | File)[]>([]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const router = useRouter();
+    const [files, setFiles] = useState<File[]>([]);
+    const [selectedFile, setSelectedFile] = useState<FilePondFile | null>(null);
 
     const coverImage = useCoverImage();
     const uploadImage = useAction(api.github.uploadImage);
-    const { updateFile } = useUnsavedChanges();
+    const saveContent = useAction(api.github.updateFileContent);
+    const { updateFile, changedFiles, resetChangedFiles } = useUnsavedChanges();
 
     const onClose = () => {
         setFiles([]);
-        setIsSubmitting(false);
+        setSelectedFile(null);
         coverImage.onClose();
     };
 
     const onChange = async (error: FilePondErrorDescription | null, fileItem: FilePondFile) => {
         if (fileItem && !error) {
-            setIsSubmitting(true);
-            console.log(fileItem);
-            try {
-                const res = await uploadImage({
-                    id: documentId as Id<"documents">,
-                    file: fileItem.getFileEncodeBase64String(),
-                    filename: fileItem.filename
-                });
-                if (res && res.content && res.content.path) {
-                    const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
-                    updateFile(
-                        filePathString as string,
-                        {
-                            featured_image: res.content.path
-                        }
-                    );
-                }
-                onClose();
-                setIsSubmitting(false);
-            } catch (error) {
-                console.error("Failed to upload image:", error);
-                setIsSubmitting(false);
-            }
+            setFiles([fileItem.file as File]);
+            setSelectedFile(fileItem);
         }
+    };
+
+    const handleUpload = async () => {
+        if (!selectedFile) return;
+
+        onClose();
+
+        const promise = (async () => {
+            const uniqueFilename = generateUniqueFilename(selectedFile.filename);
+            const res = await uploadImage({
+                id: documentId as Id<"documents">,
+                file: selectedFile.getFileEncodeBase64String(),
+                filename: uniqueFilename
+            });
+            if (res && res.content && res.content.path) {
+                const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+                const imagePath = res.content.path.replace('static/', '');
+                updateFile(
+                    filePathString as string,
+                    {
+                        featured_image: imagePath
+                    }
+                );
+
+                // Save the changes
+                await saveContent({
+                    id: documentId as Id<"documents">,
+                    filesToUpdate: changedFiles
+                });
+                resetChangedFiles();
+                router.refresh();
+            }
+        })();
+
+        toast.promise(promise, {
+            loading: "Uploading image...",
+            success: "Image uploaded successfully!",
+            error: "Failed to upload image."
+        });
     };
 
     return (
@@ -72,21 +103,23 @@ export const CoverImageModal = () => {
                         Cover Image
                     </h3>
                 </DialogHeader>
-                {/* <SingleImageDropzone
-                    className="w-full outline-none"
-                    disabled={isSubmitting}
-                    value={file}
-                    onChange={onChange}
-                /> */}
+                <DialogTitle className="hidden"></DialogTitle>
                 <FilePond
                     files={files}
                     allowMultiple={false}
+                    allowReplace={true}
                     onaddfile={onChange}
-                    disabled={isSubmitting}
                     acceptedFileTypes={['image/*']}
                     maxFiles={1}
-                    labelIdle='Drag & drop your image or <span class="filepond--label-action">Browse</span>'
                 />
+                <div className="flex justify-end mt-4">
+                    <Button
+                        onClick={handleUpload}
+                        disabled={!selectedFile}
+                    >
+                        Upload
+                    </Button>
+                </div>
             </DialogContent>
         </Dialog>
     );

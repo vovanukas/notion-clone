@@ -18,6 +18,16 @@ export const createRepo = action({
    },
   handler: async (ctx, args) => {
     console.log("Creating repo...");
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+      throw new Error ("Unauthenticated");
+    }
+
+    ctx.runMutation(api.documents.update, {
+      id: args.repoName,
+      workflowRunning: true,
+    })
 
     try {
       // Step 1: Create a new repository in the organization
@@ -30,6 +40,11 @@ export const createRepo = action({
 
       const repoUrl = response.data.html_url;
       console.log("Repository created:", repoUrl);
+
+      await ctx.runAction(api.github.encryptAndPublishSecret, ({
+        id: args.repoName,
+        secret: identity.subject
+      }))
 
       // Step 2: Add a GitHub Actions workflow to set up Hugo
       const workflowContent = `
@@ -77,6 +92,14 @@ jobs:
         git add .
         git commit -m "Initial setup with Ananke theme"
         git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugotion/\${{ github.event.repository.name }}.git main
+
+    - name: Workflow Webhook Action
+      uses: distributhor/workflow-webhook@v3
+      with:
+        webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+        webhook_auth_type: "bearer"
+        webhook_auth: \${{ secrets.CALLBACK_BEARER }}
+        data: '{ "workflowRunning": false }'
 `;
 
 
@@ -353,28 +376,38 @@ export const updateFileContent = action({
   handler: async (_, args) => {
     for (const file of args.filesToUpdate) {
       const { content, path, ...metadata } = file;
-      // Get the current file content to preserve the SHA
-      const response = await octokit.repos.getContent({
-        owner: "hugotion",
-        repo: args.id,
-        path: `content/${path}`,
-      });
+      try {
+        // Get the current file content to preserve the SHA
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: `content/${path}`,
+        });
 
-      const data = response.data;
-      const fileData = Array.isArray(data) ? data.find(f => f.path === `content/${path}`) : data;
+        if (Array.isArray(response.data)) {
+          throw new Error("Path is a directory, not a file");
+        }
 
-      // Create the frontmatter string
-      const frontmatter = matter.stringify(content, metadata);
+        if (!('sha' in response.data)) {
+          throw new Error("File not found or invalid");
+        }
 
-      // Update the file with the new content
-      await octokit.repos.createOrUpdateFileContents({
-        owner: "hugotion",
-        repo: args.id,
-        path: `content/${path}`,
-        message: `Updated content of: ${path}`,
-        content: Buffer.from(frontmatter).toString("base64"),
-        sha: fileData?.sha
-      });
+        // Create the frontmatter string
+        const frontmatter = matter.stringify(content, metadata);
+
+        // Update the file with the new content
+        await octokit.repos.createOrUpdateFileContents({
+          owner: "hugotion",
+          repo: args.id,
+          path: `content/${path}`,
+          message: `Updated content of: ${path}`,
+          content: Buffer.from(frontmatter).toString("base64"),
+          sha: response.data.sha
+        });
+      } catch (error) {
+        console.error(`Failed to update file ${path}:`, error);
+        throw error;
+      }
     }
   }
 });
@@ -386,16 +419,98 @@ export const uploadImage = action({
     filename: v.string(),
   },
   handler: async (_, args) => {
-    const response = await octokit.repos.createOrUpdateFileContents({
-      owner: 'hugotion',
-      repo: args.id,
-      path: `static/images/${args.filename}`,
-      message: 'Uploaded image',
-      content: args.file,
-      headers: {
-        'X-GitHub-Api-Version': '2022-11-28'
+    try {
+      const response = await octokit.repos.createOrUpdateFileContents({
+        owner: 'hugotion',
+        repo: args.id,
+        path: `static/images/${args.filename}`,
+        message: 'Uploaded image',
+        content: args.file,
+        headers: {
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error("Failed to upload image:", error);
+      throw new Error("Failed to upload image. Please try again.");
+    }
+  }
+});
+
+export const deleteRepo = action({
+  args: { id: v.id("documents") },
+  handler: async (_, args) => {
+    try {
+      await octokit.repos.delete({
+        owner: 'hugotion',
+        repo: args.id,
+      });
+    } catch (error) {
+      console.error("Failed to delete GitHub repository:", error);
+      throw new Error("Failed to delete GitHub repository");
+    }
+  }
+});
+
+export const deleteImage = action({
+  args: {
+    id: v.id("documents"),
+    imagePath: v.string(),
+  },
+  handler: async (_, args) => {
+    try {
+      console.log("Attempting to delete image:", {
+        repo: args.id,
+        path: `static/${args.imagePath}`
+      });
+
+      try {
+        // Get the current file content to preserve the SHA
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: `static/${args.imagePath}`,
+        });
+
+        console.log("Get content response:", response.data);
+
+        if (Array.isArray(response.data)) {
+          throw new Error("Path is a directory, not a file");
+        }
+
+        if (!('sha' in response.data)) {
+          console.error("Invalid response data:", response.data);
+          throw new Error("File not found or invalid");
+        }
+
+        // Delete the file
+        const deleteResponse = await octokit.repos.deleteFile({
+          owner: "hugotion",
+          repo: args.id,
+          path: `static/${args.imagePath}`,
+          message: "Deleted image",
+          sha: response.data.sha
+        });
+
+        console.log("Delete response:", deleteResponse.data);
+      } catch (error) {
+        // If the file is not found (404), we can consider this a success
+        // since our goal is to ensure the file doesn't exist
+        if (error instanceof Error && 'status' in error && error.status === 404) {
+          console.log("File already deleted or not found, proceeding with metadata update");
+          return true;
+        }
+        throw error;
       }
-    });
-    return response.data;
+
+      return true;
+    } catch (error) {
+      console.error("Failed to delete image. Full error:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to delete image: ${error.message}`);
+      }
+      throw new Error("Failed to delete image. Please try again.");
+    }
   }
 });

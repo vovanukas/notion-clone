@@ -90,8 +90,6 @@ body,
   }
 }
 
-
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -99,4 +97,99 @@ body,
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* FilePond Styles */
+.filepond--file-action-button {
+  cursor: pointer;
+}
+
+.filepond--drop-label {
+  color: hsl(var(--foreground));
+}
+
+.filepond--label-action {
+  text-decoration-color: hsl(var(--muted-foreground));
+}
+
+.filepond--panel-root {
+  background-color: hsl(var(--muted));
+  border-radius: 0.5em;
+}
+
+.filepond--item-panel {
+  border-radius: 0.5em;
+  background-color: hsl(var(--secondary));
+}
+
+.filepond--drip-blob {
+  background-color: hsl(var(--muted-foreground));
+}
+
+.filepond--file-action-button {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.filepond--file-action-button:hover,
+.filepond--file-action-button:focus {
+  box-shadow: 0 0 0 0.125em hsl(var(--ring));
+}
+
+.filepond--file {
+  color: hsl(var(--foreground));
+}
+
+[data-filepond-item-state*='error'] .filepond--item-panel,
+[data-filepond-item-state*='invalid'] .filepond--item-panel {
+  background-color: hsl(var(--destructive));
+}
+
+[data-filepond-item-state='processing-complete'] .filepond--item-panel {
+  background-color: hsl(var(--primary));
+}
+
+.filepond--panel-root {
+  background-color: transparent;
+  border: 2px solid hsl(var(--border));
+}
+
+/* Dark mode specific overrides */
+.dark .filepond--drop-label {
+  color: hsl(var(--foreground));
+}
+
+.dark .filepond--label-action {
+  text-decoration-color: hsl(var(--muted-foreground));
+}
+
+.dark .filepond--panel-root {
+  background-color: hsl(var(--muted));
+  border-color: hsl(var(--border));
+}
+
+.dark .filepond--item-panel {
+  background-color: hsl(var(--secondary));
+}
+
+.dark .filepond--drip-blob {
+  background-color: hsl(var(--muted-foreground));
+}
+
+.dark .filepond--file-action-button {
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .filepond--file {
+  color: hsl(var(--foreground));
+}
+
+.dark [data-filepond-item-state*='error'] .filepond--item-panel,
+.dark [data-filepond-item-state*='invalid'] .filepond--item-panel {
+  background-color: hsl(var(--destructive));
+}
+
+.dark [data-filepond-item-state='processing-complete'] .filepond--item-panel {
+  background-color: hsl(var(--primary));
 }
