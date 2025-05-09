@@ -8,7 +8,7 @@ import "@blocknote/mantine/style.css";
 
 import { useTheme } from "next-themes";
 import { useEdgeStore } from "@/lib/edgestore";
-import { useEffect } from "react";
+import { useEffect, useCallback, useRef } from "react";
 
 interface EditorProps {
     onChange: (value: string) => void;
@@ -19,6 +19,7 @@ interface EditorProps {
 const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     const { resolvedTheme } = useTheme();
     const { edgestore } = useEdgeStore();
+    const isInitialMount = useRef(true);
 
     const handleUpload = async (file: File) => {
         const response = await edgestore.publicFiles.upload({
@@ -33,23 +34,31 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     });
 
     useEffect(() => {
-        async function parseAndSetContent() {
-            const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
-            editor.replaceBlocks(editor.document, blocks);
+        if (isInitialMount.current && initialContent) {
+            async function parseAndSetContent() {
+                const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+                editor.replaceBlocks(editor.document, blocks);
+                isInitialMount.current = false;
+            }
+            parseAndSetContent();
         }
-        parseAndSetContent();
     }, [editor, initialContent]);
 
-    return <div>
-        <BlockNoteView
-            editor={editor}
-            theme={resolvedTheme === "dark" ? "dark" : "light"}
-            editable={editable}
-            onChange={() => {
-                onChange(JSON.stringify(editor.document, null, 2));
-            }}
-        />
-    </div>
+    const handleEditorChange = useCallback(() => {
+        const currentContent = JSON.stringify(editor.document, null, 2);
+        onChange(currentContent);
+    }, [editor, onChange]);
+
+    return (
+        <div>
+            <BlockNoteView
+                editor={editor}
+                theme={resolvedTheme === "dark" ? "dark" : "light"}
+                editable={editable}
+                onChange={handleEditorChange}
+            />
+        </div>
+    );
 }
 
 export default Editor;
