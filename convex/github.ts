@@ -293,8 +293,8 @@ export const fetchAndReturnGithubFileContent = action({
         throw new Error("Invalid file content or format");
       }
     } catch (error) {
-      console.error("Failed to fetch config.toml:", error);
-      throw new Error("Error retrieving config.toml file");
+      console.error(`Failed to fetch ${args.path}:`, error);
+      throw new Error(`Error retrieving ${args.path} file`);
     }
   },
 });
@@ -513,4 +513,47 @@ export const deleteImage = action({
       throw new Error("Failed to delete image. Please try again.");
     }
   }
+});
+
+export const createMarkdownFileInRepo = action({
+  args: {
+    id: v.id("documents"),
+    filePath: v.string(), // e.g. content/en/about/_index.md or content/en/about/page.md
+    content: v.string(),  // markdown content (frontmatter + body)
+  },
+  handler: async (_, args) => {
+    try {
+      // Decode the filePath to handle any double-encoded characters
+      const decodedPath = decodeURIComponent(args.filePath);
+
+      // Try to get the file to check if it already exists (to get sha if needed)
+      let sha: string | undefined = undefined;
+      try {
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: decodedPath,
+        });
+        if (!Array.isArray(response.data) && 'sha' in response.data) {
+          sha = response.data.sha;
+        }
+      } catch (error) {
+        // If not found, that's fine (we are creating)
+        console.log("File not found, will create new:", decodedPath);
+      }
+
+      await octokit.repos.createOrUpdateFileContents({
+        owner: "hugotion",
+        repo: args.id,
+        path: decodedPath,
+        message: `Create file: ${decodedPath}`,
+        content: Buffer.from(args.content).toString("base64"),
+        ...(sha ? { sha } : {}),
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to create markdown file:", error);
+      throw new Error("Failed to create markdown file. Please try again.");
+    }
+  },
 });

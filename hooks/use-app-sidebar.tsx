@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { HugoFileNode } from "@/types/hugo";
 
-type GitHubList = {
+export type GitHubList = {
   path: string;
   type: 'tree' | 'blob';
   sha: string;

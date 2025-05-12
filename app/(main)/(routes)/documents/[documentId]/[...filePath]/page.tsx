@@ -58,9 +58,10 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         if (!documentId || !filePath) return;
         try {
             const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+            const decodedPath = decodeURIComponent(filePathString);
             const fileContent = await fetchFileContent({
                 id: documentId,
-                path: `content/${filePathString}`,
+                path: `content/${decodedPath}`,
             });
             const { data, content: actualContent } = matter(fileContent);
             setContent(actualContent.trim());

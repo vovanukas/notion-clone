@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
 import { useSettings } from "@/hooks/use-settings";
@@ -12,10 +12,10 @@ import {
   ChevronRight,
   File,
   Folder,
-  PlusCircle,
   Search,
   Settings,
   Trash,
+  Plus,
 } from "lucide-react";
 
 import {
@@ -32,6 +32,7 @@ import {
   SidebarMenuSub,
   SidebarRail,
   SidebarSeparator,
+  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
@@ -42,6 +43,14 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Id } from "@/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/spinner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { FileItem } from "./file-item";
+import { FolderItem } from "./folder-item";
 
 interface TreeNode {
   name?: string;
@@ -59,8 +68,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter();
   const params = useParams();
 
-  const create = useMutation(api.documents.create);
-  const createRepo = useAction(api.github.createRepo);
   const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
@@ -88,19 +95,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     loadFileTree();
   }, [fetchContentTree, params.documentId, setIsLoading, setItems, setError, document]);
 
-  const handleCreate = () => {
-    const promise = create({ title: "Untitled" }).then((documentId) => {
-      router.push(`/documents/${documentId}`);
-      return createRepo({ repoName: documentId });
-    });
-
-    toast.promise(promise, {
-      loading: "Creating a note...",
-      success: "New note created!",
-      error: "Failed to create a new note.",
-    });
-  };
-
   return (
     <Sidebar
       className="top-[--header-height] !h-[calc(100svh-var(--header-height))]"
@@ -114,7 +108,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
             <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
-            <Item onClick={handleCreate} label="New Page" icon={PlusCircle} />
             <Popover>
               <PopoverTrigger className="w-full">
                 <Item label="Trash" icon={Trash} />
@@ -162,49 +155,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 }
 
 function Tree({ item }: { item: TreeNode }) {
-  const { type, path, name, children } = item;
-  const router = useRouter();
-  const params = useParams();
-
-  const onRedirect = (documentId: string) => {
-    router.push(`/documents/${documentId}/${path}`);
-  };
+  const { type } = item;
 
   if (type === "blob") {
-    return (
-      <SidebarMenuButton
-        onClick={() => onRedirect(params.documentId as Id<"documents">)}
-        className="data-[active=true]:bg-transparent"
-      >
-        <File />
-        {name}
-      </SidebarMenuButton>
-    );
+    return <FileItem item={item} />;
   }
 
-  if (children) {
-    return (
-      <SidebarMenuItem>
-        <Collapsible
-          className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
-          defaultOpen={false}
-        >
-          <CollapsibleTrigger asChild>
-            <SidebarMenuButton>
-              <ChevronRight className="transition-transform" />
-              <Folder />
-              {name}
-            </SidebarMenuButton>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SidebarMenuSub>
-              {children.map((child) => (
-                <Tree key={child.sha} item={child} />
-              ))}
-            </SidebarMenuSub>
-          </CollapsibleContent>
-        </Collapsible>
-      </SidebarMenuItem>
-    );
-  }
+  return <FolderItem item={item} />;
 }

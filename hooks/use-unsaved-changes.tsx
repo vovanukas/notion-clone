@@ -17,7 +17,9 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
   
   updateFile: (path, updates) =>
     set((state) => {
-      const existingFile = state.changedFiles.find(file => file.path === path);
+      // Decode the path to prevent double-encoding
+      const decodedPath = decodeURIComponent(path);
+      const existingFile = state.changedFiles.find(file => file.path === decodedPath);
 
       // Process updates to handle dates and other special types
       const processedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
@@ -36,7 +38,7 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
         return newState;
       } else {
         const newFile: ChangedFile = {
-          path,
+          path: decodedPath,
           content: '',
           ...processedUpdates
         };
