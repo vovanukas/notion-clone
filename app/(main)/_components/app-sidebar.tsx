@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
 import { useSettings } from "@/hooks/use-settings";
 import { useParams, useRouter } from "next/navigation";
-import { useAppSidebar } from "@/hooks/use-app-sidebar";
+import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
 import { toast } from "sonner";
 import {
-  ChevronRight,
-  File,
-  Folder,
+  File as FileIcon,
+  Folder as FolderIcon,
   Search,
   Settings,
   Trash,
@@ -26,31 +25,24 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
   SidebarRail,
   SidebarSeparator,
-  SidebarMenuAction,
 } from "@/components/ui/sidebar";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TrashBox } from "./trash-box";
 import { WebsiteSwitcher } from "./website-switcher";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TreeView, TreeDataItem } from "@/components/tree-view";
 import { Id } from "@/convex/_generated/dataModel";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FileItem } from "./file-item";
-import { FolderItem } from "./folder-item";
+import { Spinner } from "@/components/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface TreeNode {
   name?: string;
@@ -61,7 +53,7 @@ interface TreeNode {
 }
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const { treeData, setItems, isLoading, setIsLoading, error, setError } = useAppSidebar();
+  const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError } = useAppSidebar();
 
   const settings = useSettings();
   const search = useSearch();
@@ -69,31 +61,161 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const params = useParams();
 
   const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
+  const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
   );
 
+  const refreshTree = useCallback(async () => {
+    if (!params.documentId) return;
+    setIsLoading(true);
+    try {
+      const result = await fetchContentTree({
+        id: params.documentId as Id<"documents">,
+      });
+      const processedResult = result.map(item => ({
+        ...item,
+        path: typeof item.path === 'string' ? item.path : '',
+        type: typeof item.type === 'string' ? item.type : 'blob',
+        sha: typeof item.sha === 'string' ? item.sha : String(Math.random()),
+        name: typeof item.path === 'string' ? item.path.split('/').pop() || item.path : 'Unnamed',
+      }));
+      setItems(processedResult as GitHubList[]);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to fetch GitHub file tree:", err);
+      setError("Failed to load file structure. Please try again later.");
+      toast.error("Failed to refresh file tree.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError]);
+
   useEffect(() => {
     async function loadFileTree() {
-      setIsLoading(true);
-
       if (!params.documentId || !document || document.workflowRunning) return;
-
-      try {
-        const result = await fetchContentTree({
-          id: params.documentId as Id<"documents">,
-        });
-        setItems(result);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to fetch GitHub file tree:", err);
-        setError("Failed to load file structure. Please try again later.");
-      } finally {
-        setIsLoading(false);
-      }
+      await refreshTree();
     }
     loadFileTree();
-  }, [fetchContentTree, params.documentId, setIsLoading, setItems, setError, document]);
+  }, [params.documentId, document, refreshTree]);
+
+  const handleCreateItem = async (parentId: string | undefined, type: "file" | "folder") => {
+    if (!params.documentId) return;
+    const itemName = window.prompt(`Enter new ${type} name:`);
+    if (!itemName) return;
+
+    let parentPath = "";
+    if (parentId) {
+      const findParent = (nodes: TreeNode[], id: string): TreeNode | undefined => {
+        for (const node of nodes) {
+          if (node.sha === id || node.path === id) return node;
+          if (node.children) {
+            const found = findParent(node.children, id);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      const parentNode = findParent(rawTreeData as TreeNode[], parentId);
+      if (parentNode && parentNode.path) {
+        parentPath = parentNode.path;
+      } else if (parentId && type === "folder") {
+        console.warn("Could not determine parent path from parentId:", parentId);
+      }
+    }
+
+    setIsLoading(true);
+    const today = new Date().toISOString().split("T")[0];
+
+    let filePath = "";
+    let content = "";
+
+    if (type === "folder") {
+      filePath = parentPath ? `${parentPath}/${itemName}/_index.md` : `${itemName}/_index.md`;
+      content = `---\ntitle: \"${itemName}\"\ndate: ${today}\n---\n`;
+    } else {
+      filePath = parentPath ? `${parentPath}/${itemName}.md` : `${itemName}.md`;
+      content = `---\ntitle: \"${itemName}\"\ndate: ${today}\n---\n`;
+    }
+
+    try {
+      await createMarkdownFile({
+        id: params.documentId as Id<"documents">,
+        filePath: `content/${filePath}`,
+        content,
+      });
+      toast.success(`${type === "folder" ? "Folder" : "Page"} \"${itemName}\" created!`);
+      await refreshTree();
+    } catch (err) {
+      console.error(`Failed to create ${type}:`, err);
+      toast.error(`Failed to create ${type}. Please try again.`);
+      setError(`Failed to create ${type}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
+    if (!nodes) return [];
+
+    const getItemActions = (itemPath: string | undefined, itemType: string | undefined, itemId: string): React.ReactNode => {
+      if (itemType === "tree") {
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <div
+                role="button"
+                aria-label="Actions"
+                className="p-1 hover:bg-accent dark:hover:bg-accent rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <Plus className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start">
+              <DropdownMenuItem onClick={() => handleCreateItem(itemId, "folder")}>
+                <FolderIcon className="h-4 w-4 mr-2" />
+                New Folder
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCreateItem(itemId, "file")}>
+                <FileIcon className="h-4 w-4 mr-2" />
+                New Page
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      }
+      return null;
+    };
+
+    return nodes.map((node) => {
+      const typedNode = node as TreeNode;
+
+      const name = typedNode.name || (typedNode.path ? typedNode.path.split('/').pop() : 'Unnamed');
+      const id = typedNode.sha || typedNode.path || String(Math.random());
+      const isFolder = typedNode.type === "tree";
+
+      return {
+        id: id,
+        name: name || "Unnamed Item",
+        icon: isFolder ? FolderIcon : FileIcon,
+        children: isFolder && typedNode.children && typedNode.children.length > 0
+                    ? transformDataToTreeDataItems(typedNode.children)
+                    : undefined,
+        actions: getItemActions(typedNode.path, typedNode.type, id),
+        onClick: () => {
+          if (!isFolder && typedNode.path && params.documentId) {
+            let navigationPath = typedNode.path;
+            if (navigationPath.startsWith('content/')) {
+                navigationPath = navigationPath.substring('content/'.length);
+            }
+            router.push(`/documents/${params.documentId}/${navigationPath}`);
+          }
+        },
+      };
+    });
+  }, [router, params.documentId, handleCreateItem]);
+
+  const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
 
   return (
     <Sidebar
@@ -134,11 +256,17 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 ) : error ? (
                   <div className="p-4 text-sm text-destructive">{error}</div>
                 ) : (
-                  <SidebarMenu>
-                    {treeData.map((item) => (
-                      <Tree key={item.sha} item={item} />
-                    ))}
-                  </SidebarMenu>
+                  <TreeView
+                    data={displayTreeData}
+                    initialSelectedItemId={params.documentId && params.path ? `/documents/${params.documentId}/${params.path}` : undefined}
+                    onSelectChange={(item) => {
+                      // onClick is handled by TreeDataItem, no explicit action needed here for now
+                    }}
+                    expandAll={false}
+                    defaultNodeIcon={FolderIcon}
+                    defaultLeafIcon={FileIcon}
+                    className="p-2"
+                  />
                 )}
               </SidebarGroupContent>
             </SidebarGroup>
@@ -152,14 +280,4 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       <SidebarRail />
     </Sidebar>
   );
-}
-
-function Tree({ item }: { item: TreeNode }) {
-  const { type } = item;
-
-  if (type === "blob") {
-    return <FileItem item={item} />;
-  }
-
-  return <FolderItem item={item} />;
 }
