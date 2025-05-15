@@ -15,6 +15,7 @@ import {
   Settings,
   Trash,
   Plus,
+  MoreHorizontal,
 } from "lucide-react";
 
 import {
@@ -40,6 +41,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,14 +67,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
   );
+  const deleteFile = useAction(api.github.deleteFile);
 
   const refreshTree = useCallback(async () => {
     if (!params.documentId) return;
     setIsLoading(true);
     try {
-      const result = await fetchContentTree({
+      const promise = fetchContentTree({
         id: params.documentId as Id<"documents">,
       });
+
+      toast.promise(promise, {
+        loading: "Refreshing file tree...",
+        success: "File tree refreshed successfully!",
+        error: "Failed to refresh file tree. Please try again."
+      });
+
+      const result = await promise;
       const processedResult = result.map(item => ({
         ...item,
         path: typeof item.path === 'string' ? item.path : '',
@@ -85,7 +96,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } catch (err) {
       console.error("Failed to fetch GitHub file tree:", err);
       setError("Failed to load file structure. Please try again later.");
-      toast.error("Failed to refresh file tree.");
     } finally {
       setIsLoading(false);
     }
@@ -139,17 +149,52 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     }
 
     try {
-      await createMarkdownFile({
+      const promise = createMarkdownFile({
         id: params.documentId as Id<"documents">,
         filePath: `content/${filePath}`,
         content,
       });
-      toast.success(`${type === "folder" ? "Folder" : "Page"} \"${itemName}\" created!`);
+
+      toast.promise(promise, {
+        loading: `Creating ${type}...`,
+        success: `${type === "folder" ? "Folder" : "Page"} "${itemName}" created successfully!`,
+        error: `Failed to create ${type}. Please try again.`
+      });
+
+      await promise;
       await refreshTree();
     } catch (err) {
       console.error(`Failed to create ${type}:`, err);
-      toast.error(`Failed to create ${type}. Please try again.`);
       setError(`Failed to create ${type}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (itemPath: string | undefined) => {
+    if (!itemPath || !params.documentId) return;
+
+    const confirmDelete = window.confirm("Are you sure you want to delete this item permanently? This action cannot be undone.");
+    if (!confirmDelete) return;
+
+    setIsLoading(true);
+    try {
+      const promise = deleteFile({
+        id: params.documentId as Id<"documents">,
+        filePath: `content/${itemPath}`,
+      });
+
+      toast.promise(promise, {
+        loading: "Deleting...",
+        success: "Successfully deleted!",
+        error: "Failed to delete item. Please try again."
+      });
+
+      await promise;
+      await refreshTree();
+    } catch (err) {
+      console.error("Failed to delete item:", err);
+      setError("Failed to delete item.");
     } finally {
       setIsLoading(false);
     }
@@ -159,32 +204,41 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     if (!nodes) return [];
 
     const getItemActions = (itemPath: string | undefined, itemType: string | undefined, itemId: string): React.ReactNode => {
-      if (itemType === "tree") {
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <div
-                role="button"
-                aria-label="Actions"
-                className="p-1 hover:bg-accent dark:hover:bg-accent rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <Plus className="h-4 w-4 text-muted-foreground" />
-              </div>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start">
-              <DropdownMenuItem onClick={() => handleCreateItem(itemId, "folder")}>
-                <FolderIcon className="h-4 w-4 mr-2" />
-                New Folder
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCreateItem(itemId, "file")}>
-                <FileIcon className="h-4 w-4 mr-2" />
-                New Page
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      }
-      return null;
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <div
+              role="button"
+              aria-label="Actions"
+              className="p-1 hover:bg-accent dark:hover:bg-accent rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start">
+            {itemType === "tree" && (
+              <>
+                <DropdownMenuItem onClick={() => handleCreateItem(itemId, "folder")}>
+                  <FolderIcon className="h-4 w-4 mr-2" />
+                  New Folder
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleCreateItem(itemId, "file")}>
+                  <FileIcon className="h-4 w-4 mr-2" />
+                  New File
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuItem
+              onClick={() => handleDeleteItem(itemPath)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash className="h-4 w-4 mr-2" />
+              Delete Permanently
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
     };
 
     return nodes.map((node) => {
@@ -213,7 +267,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         },
       };
     });
-  }, [router, params.documentId, handleCreateItem]);
+  }, [router, params.documentId, handleCreateItem, handleDeleteItem]);
 
   const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
 

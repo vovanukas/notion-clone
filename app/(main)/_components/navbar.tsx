@@ -4,6 +4,7 @@ import { useAction, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -31,12 +32,19 @@ export const Navbar = () => {
   )
 
   const saveChanges = async () => {
-    await saveContent({
+    const promise = saveContent({
       id: documentId,
       filesToUpdate: changedFiles
-    })
-    resetChangedFiles();
-    router.refresh();
+    }).then(() => {
+      resetChangedFiles();
+      router.refresh();
+    });
+
+    toast.promise(promise, {
+      loading: "Saving changes...",
+      success: "Changes saved successfully!",
+      error: "Failed to save changes."
+    });
   };
 
   if (document === undefined) {

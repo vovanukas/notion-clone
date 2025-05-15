@@ -84,15 +84,8 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     }, [editor]);
 
     const onTitleChange = useCallback((value: string) => {
-        const newTitle = value || "Untitled";
+        const newTitle = value;
         setMetadata(prev => ({ ...prev, title: newTitle }));
-
-        if (document) {
-            update({
-                id: document._id,
-                title: newTitle
-            });
-        }
     }, [document, update]);
 
     if (document === undefined || loading) {

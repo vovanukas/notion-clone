@@ -557,3 +557,101 @@ export const createMarkdownFileInRepo = action({
     }
   },
 });
+
+export const deleteFile = action({
+  args: {
+    id: v.id("documents"),
+    filePath: v.string(), // This is the top-level path to delete (file or directory)
+  },
+  handler: async (ctx, args) => { // ctx is available if we need to call other actions/mutations
+
+    const deletePathRecursive = async (currentPath: string) => {
+      console.log("[deletePathRecursive] Attempting to get content for path:", currentPath);
+      let contentData;
+      try {
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: currentPath,
+        });
+        contentData = response.data;
+        console.log(`[deletePathRecursive] Got content for ${currentPath}. Type: ${Array.isArray(contentData) ? 'directory' : 'file'}, Data:`, JSON.stringify(contentData).substring(0, 200) + "...");
+      } catch (error: any) {
+        if (error.status === 404) {
+          console.log(`[deletePathRecursive] Path ${currentPath} not found during getContent. Assuming already deleted or does not exist.`);
+          return; // Nothing to delete
+        }
+        console.error(`[deletePathRecursive] Error fetching content for ${currentPath}:`, error.status, error.message, error.response?.data);
+        throw error; // Rethrow other errors
+      }
+
+      if (Array.isArray(contentData)) {
+        // It's a directory
+        console.log(`[deletePathRecursive] Path ${currentPath} is a directory. Processing ${contentData.length} items within it...`);
+        if (contentData.length === 0) {
+          console.log(`[deletePathRecursive] Directory ${currentPath} is empty. No contents to delete from within.`);
+          // GitHub usually removes empty directories automatically when the last file is deleted.
+          // No explicit directory delete call is usually needed with this strategy.
+          return;
+        }
+        // Important: Iterate over a copy of the array if items are being removed, though here we recurse.
+        for (const item of contentData) {
+          console.log(`[deletePathRecursive] Processing item in directory ${currentPath}: Path: ${item.path}, Type: ${item.type}, SHA: ${item.sha}`);
+          // item.path is the full path from the repo root for items returned by getContent for a directory.
+          await deletePathRecursive(item.path);
+        }
+        console.log(`[deletePathRecursive] Finished processing all items in directory ${currentPath}.`);
+
+      } else if (typeof contentData === 'object' && contentData !== null && contentData.type === 'file') {
+        // It's a single file
+        console.log(`[deletePathRecursive] Path ${currentPath} is a file. Attempting to delete...`);
+        if (!contentData.sha) {
+          console.error(`[deletePathRecursive] Invalid file data for ${currentPath}, SHA is missing:`, contentData);
+          throw new Error(`File ${currentPath} found but SHA is missing, cannot delete.`);
+        }
+        try {
+          await octokit.repos.deleteFile({
+            owner: "hugotion",
+            repo: args.id,
+            path: currentPath,
+            message: `Delete file: ${currentPath}`,
+            sha: contentData.sha,
+          });
+          console.log(`[deletePathRecursive] File ${currentPath} deleted successfully from GitHub.`);
+        } catch (deleteError: any) {
+           console.error(`[deletePathRecursive] Failed to delete file ${currentPath} from GitHub:`, deleteError.status, deleteError.message, deleteError.response?.data);
+           if (deleteError.status === 404) {
+             console.warn(`[deletePathRecursive] File ${currentPath} was not found during deletion attempt. Assuming already deleted.`);
+           } else {
+            throw deleteError; // Rethrow if it's not a 404 on delete
+           }
+        }
+      } else {
+        console.warn(`[deletePathRecursive] Path ${currentPath} was not identified as a processable file or directory. Content:`, contentData);
+      }
+    };
+
+    try {
+      console.log(`[deleteFile Action] Starting deletion process for top-level path: ${args.filePath}`);
+      await deletePathRecursive(args.filePath);
+      console.log(`[deleteFile Action] Successfully completed deletion process for path: ${args.filePath}`);
+      return true;
+    } catch (error: any) {
+      console.error(`[deleteFile Action] Overall failure for path ${args.filePath}. Error:`, error.status, error.message, error.name, error.response?.data);
+
+      let finalMessage = `Failed to delete path ${args.filePath}.`;
+      if (error.name === 'HttpError' && error.response && error.response.data && error.response.data.message) {
+        finalMessage = `GitHub API Error: ${error.response.data.message} (status: ${error.status || 'unknown'})`;
+        if (error.response.data.documentation_url) {
+           finalMessage += ` - See ${error.response.data.documentation_url}`;
+        }
+      } else if (error instanceof Error && error.message) {
+        finalMessage = error.message; // Use the specific error message thrown by deletePathRecursive
+      } else {
+        finalMessage = `An unexpected error occurred while deleting ${args.filePath}. Status: ${error.status || 'unknown'}`;
+      }
+      console.error("[deleteFile Action] Throwing final error:", finalMessage);
+      throw new Error(finalMessage);
+    }
+  },
+});
