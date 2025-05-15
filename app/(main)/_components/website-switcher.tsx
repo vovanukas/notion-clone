@@ -24,11 +24,14 @@ import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { Icon } from "@radix-ui/react-select"
 import { toast } from "sonner"
+import { useThemeSelector } from "@/hooks/use-theme-selector"
 
 export const WebsiteSwitcher = () => {
   const params = useParams();
   const router = useRouter();
   const { isMobile } = useSidebar()
+  const themeSelector = useThemeSelector();
+  const [open, setOpen] = React.useState(false);
 
   const create = useMutation(api.documents.create);
   const createRepo = useAction(api.github.createRepo);
@@ -44,22 +47,31 @@ export const WebsiteSwitcher = () => {
   };
 
   const handleCreate = () => {
-    const promise = create({ title: "Untitled" }).then((documentId) => {
-      router.push(`/documents/${documentId}`);
-      return createRepo({ repoName: documentId });
-    });
-
-    toast.promise(promise, {
-      loading: "Creating your website...",
-      success: "New website created!",
-      error: "Failed to create a new website.",
-    });
+    setOpen(false);
+    themeSelector.onOpen();
   };
+
+  React.useEffect(() => {
+    const handleThemeSubmit = async (themeUrl: string) => {
+      const promise = create({ title: "Untitled" }).then((documentId) => {
+        router.push(`/documents/${documentId}`);
+        return createRepo({ repoName: documentId, themeUrl });
+      });
+
+      toast.promise(promise, {
+        loading: "Creating your website...",
+        success: "New website created!",
+        error: "Failed to create a new website.",
+      });
+    };
+
+    themeSelector.onSubmit = handleThemeSubmit;
+  }, [create, createRepo, router, themeSelector]);
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={open} onOpenChange={setOpen}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
