@@ -655,3 +655,175 @@ export const deleteFile = action({
     }
   },
 });
+
+type GitHubTreeItem = {
+  path?: string;
+  mode?: string;
+  type?: string;
+  sha?: string;
+  size?: number;
+  url?: string;
+};
+
+export const renamePathInRepo = action({
+  args: {
+    id: v.id("documents"),
+    oldPath: v.string(),
+    newPath: v.string(),
+    itemType: v.union(v.literal("file"), v.literal("folder")),
+  },
+  handler: async (ctx, args) => {
+    const owner = "hugotion";
+    const repo = args.id;
+
+    console.log(`[renamePathInRepo] Starting rename for repo '${repo}': '${args.oldPath}' to '${args.newPath}' (type: ${args.itemType})`);
+
+    try {
+      if (args.itemType === "file") {
+        let oldFileContentBase64: string;
+        let oldFileSha: string;
+
+        try {
+          const response = await octokit.repos.getContent({
+            owner,
+            repo,
+            path: args.oldPath,
+          });
+
+          if (Array.isArray(response.data) || response.data.type !== 'file' || typeof response.data.content !== 'string' || !response.data.sha) {
+            console.error(`[renamePathInRepo] Expected file at oldPath '${args.oldPath}', but got different type or missing content/SHA. Data:`, response.data);
+            throw new Error(`'${args.oldPath}' is not a valid file or content is missing.`);
+          }
+          oldFileContentBase64 = response.data.content;
+          oldFileSha = response.data.sha;
+          console.log(`[renamePathInRepo] Fetched old file: '${args.oldPath}'`);
+        } catch (error) {
+          if (error instanceof Error && 'status' in error && error.status === 404) {
+            console.error(`[renamePathInRepo] Old file '${args.oldPath}' not found.`);
+            throw new Error(`File '${args.oldPath}' not found.`);
+          }
+          console.error(`[renamePathInRepo] Error fetching old file '${args.oldPath}':`, error);
+          throw error;
+        }
+
+        try {
+          await octokit.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: args.newPath,
+            message: `Rename: Create new file ${args.newPath} (from ${args.oldPath})`,
+            content: oldFileContentBase64,
+          });
+          console.log(`[renamePathInRepo] Created new file: '${args.newPath}'`);
+        } catch (error) {
+          console.error(`[renamePathInRepo] Error creating new file '${args.newPath}':`, error);
+          throw new Error(`Failed to create '${args.newPath}'. Original file '${args.oldPath}' is untouched.`);
+        }
+
+        try {
+          await octokit.repos.deleteFile({
+            owner,
+            repo,
+            path: args.oldPath,
+            message: `Rename: Delete old file ${args.oldPath} (moved to ${args.newPath})`,
+            sha: oldFileSha,
+          });
+          console.log(`[renamePathInRepo] Deleted old file: '${args.oldPath}'`);
+        } catch (error) {
+          console.error(`[renamePathInRepo] Error deleting old file '${args.oldPath}':`, error);
+          throw new Error(`Created '${args.newPath}', but failed to delete old '${args.oldPath}'. Please check repository.`);
+        }
+
+      } else if (args.itemType === "folder") {
+        let oldFolderTreeItems: GitHubTreeItem[];
+        try {
+          const { data: treeData } = await octokit.git.getTree({
+            owner,
+            repo,
+            tree_sha: "main",
+            recursive: "true",
+          });
+          // Filter items that are blobs and within the oldPath. oldPath itself is not included if it's just a prefix.
+          oldFolderTreeItems = treeData.tree.filter(
+            (item: GitHubTreeItem) => item.path && item.path.startsWith(args.oldPath + '/') && item.type === 'blob'
+          );
+          
+          // Handle case where the folder being renamed is empty or contains only an _index.md or similar at its root.
+          // Check if oldPath itself is a file (e.g. _index.md representing the folder section)
+          const oldPathItself = treeData.tree.find(
+            (item: GitHubTreeItem) => item.path === args.oldPath && item.type === 'blob'
+          );
+
+          if(oldPathItself) {
+            oldFolderTreeItems.push(oldPathItself); // Add it to the list of items to move
+          }
+
+          if (oldFolderTreeItems.length === 0) {
+            console.log(`[renamePathInRepo] Old folder '${args.oldPath}' is empty or contains no direct files (blobs). If it has subfolders with files, they should be caught by recursive delete.`);
+            // If the folder is truly empty, deleting it might be all that's needed.
+            // The creation of the new folder structure happens implicitly when files are moved into it.
+          }
+          console.log(`[renamePathInRepo] Found ${oldFolderTreeItems.length} files to move for folder '${args.oldPath}'.`);
+        } catch (error) {
+          console.error(`[renamePathInRepo] Error fetching tree for old folder '${args.oldPath}':`, error);
+          throw error;
+        }
+
+        for (const item of oldFolderTreeItems) {
+          if (!item.path || !item.sha) continue;
+
+          const oldFilePath = item.path;
+          // Construct new path by replacing the old folder path prefix with the new one.
+          const newFilePath = oldFilePath.replace(args.oldPath, args.newPath);
+
+          try {
+            const { data: blobData } = await octokit.git.getBlob({
+              owner,
+              repo,
+              file_sha: item.sha,
+            });
+
+            if (typeof blobData.content !== 'string') {
+                console.error(`[renamePathInRepo] Blob content for '${oldFilePath}' is not base64 string. Skipping.`);
+                continue;
+            }
+
+            await octokit.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path: newFilePath,
+              message: `Rename: Move ${oldFilePath} to ${newFilePath}`,
+              content: blobData.content, // content is base64
+            });
+            console.log(`[renamePathInRepo] Moved '${oldFilePath}' to '${newFilePath}'`);
+          } catch (error) {
+            console.error(`[renamePathInRepo] Error moving file '${oldFilePath}' to '${newFilePath}':`, error);
+            throw new Error(`Failed to move '${oldFilePath}'. Operation halted. Some files may have been copied.`);
+          }
+        }
+        // After all files are moved, delete the old folder structure.
+        if (oldFolderTreeItems.length > 0) {
+          console.log(`[renamePathInRepo] Deleting old folder structure: '${args.oldPath}'`);
+          try {
+            await ctx.runAction(api.github.deleteFile, {
+                id: args.id,
+                filePath: args.oldPath, // deleteFile action handles recursive deletion
+            });
+            console.log(`[renamePathInRepo] Deleted old folder '${args.oldPath}'.`);
+          } catch (error) {
+              console.error(`[renamePathInRepo] Files moved, but failed to delete old folder '${args.oldPath}':`, error);
+              throw new Error(`Files moved to '${args.newPath}', but failed to delete old folder '${args.oldPath}'.`);
+          }
+        } else {
+            console.log(`[renamePathInRepo] Old folder '${args.oldPath}' was empty or did not require content deletion after moving files.`);
+        }
+      }
+      console.log(`[renamePathInRepo] Rename operation completed for '${args.oldPath}' to '${args.newPath}'.`);
+      return true;
+
+    } catch (error) {
+      console.error(`[renamePathInRepo] Overall failure for rename '${args.oldPath}' to '${args.newPath}'. Error:`, error);
+      throw new Error(error instanceof Error ? error.message : "Failed to rename item in repository.");
+    }
+  },
+});

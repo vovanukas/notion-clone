@@ -16,6 +16,7 @@ import {
   Trash,
   Plus,
   MoreHorizontal,
+  Edit,
 } from "lucide-react";
 
 import {
@@ -68,6 +69,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
   );
   const deleteFile = useAction(api.github.deleteFile);
+  const renameGithubPath = useAction(api.github.renamePathInRepo);
 
   const refreshTree = useCallback(async () => {
     if (!params.documentId) return;
@@ -200,10 +202,62 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     }
   };
 
+  const handleRenameItem = async (itemPath: string | undefined, currentName: string | undefined, itemType: string | undefined) => {
+    if (!itemPath || !currentName || !params.documentId || !itemType) return;
+
+    const newNameFromPrompt = window.prompt(`Enter new name for "${currentName}":`, currentName);
+    if (!newNameFromPrompt || newNameFromPrompt === currentName) return;
+    
+    // Basic validation for new name (e.g., cannot contain slashes)
+    if (newNameFromPrompt.includes('/') || newNameFromPrompt.includes('\\\\')) {
+        toast.error("New name cannot contain slashes.");
+        return;
+    }
+
+    setIsLoading(true);
+    try {
+      const pathSegments = itemPath.split('/');
+      pathSegments.pop(); // Remove old name segment
+      const parentDirectoryPath = pathSegments.join('/');
+
+      const oldFullPath = `content/${itemPath}`;
+      const newFullPath = `content/${parentDirectoryPath ? parentDirectoryPath + '/' : ''}${newNameFromPrompt}`;
+
+      const promise = renameGithubPath({
+        id: params.documentId as Id<"documents">,
+        oldPath: oldFullPath,
+        newPath: newFullPath,
+        itemType: itemType === "tree" ? "folder" : "file",
+      });
+
+      toast.promise(promise, {
+        loading: `Renaming "${currentName}" to "${newNameFromPrompt}"...`,
+        success: () => {
+          // Refresh the specific part of the URL if the renamed item was the one being viewed
+          if (params.path && `content/${params.path}`.startsWith(oldFullPath)) {
+            if (oldFullPath === `content/${(params.path as string[])?.join('/')}`) {
+                const newNavigationPath = newFullPath.substring('content/'.length);
+                router.push(`/documents/${params.documentId}/${newNavigationPath}`);
+            }
+          }
+          return `Successfully renamed to "${newNameFromPrompt}"!`;
+        },
+        error: `Failed to rename. Please try again.`
+      });
+
+      await promise;
+      await refreshTree();
+    } catch (err) {
+      console.error("Failed to rename item:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
 
-    const getItemActions = (itemPath: string | undefined, itemType: string | undefined, itemId: string): React.ReactNode => {
+    const getItemActions = (itemPath: string | undefined, itemType: string | undefined, itemId: string, itemName: string | undefined): React.ReactNode => {
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -216,6 +270,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent onClick={(e) => e.stopPropagation()} side="right" align="start">
+            <DropdownMenuItem
+              onClick={() => handleRenameItem(itemPath, itemName, itemType)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Rename
+            </DropdownMenuItem>
             {itemType === "tree" && (
               <>
                 <DropdownMenuItem onClick={() => handleCreateItem(itemId, "folder")}>
@@ -226,9 +286,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <FileIcon className="h-4 w-4 mr-2" />
                   New File
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
               </>
             )}
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => handleDeleteItem(itemPath)}
               className="text-destructive focus:text-destructive"
@@ -255,7 +315,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         children: isFolder && typedNode.children && typedNode.children.length > 0
                     ? transformDataToTreeDataItems(typedNode.children)
                     : undefined,
-        actions: getItemActions(typedNode.path, typedNode.type, id),
+        actions: getItemActions(typedNode.path, typedNode.type, id, name),
         onClick: () => {
           if (!isFolder && typedNode.path && params.documentId) {
             let navigationPath = typedNode.path;
@@ -267,7 +327,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         },
       };
     });
-  }, [router, params.documentId, handleCreateItem, handleDeleteItem]);
+  }, [router, params.documentId, handleCreateItem, handleDeleteItem, handleRenameItem, renameGithubPath, refreshTree]);
 
   const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
 
@@ -312,8 +372,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 ) : (
                   <TreeView
                     data={displayTreeData}
-                    initialSelectedItemId={params.documentId && params.path ? `/documents/${params.documentId}/${params.path}` : undefined}
-                    onSelectChange={(item) => {
+                    initialSelectedItemId={params.documentId && params.path ? `/documents/${params.documentId}/${(params.path as string[]).join('/')}` : undefined}
+                    onSelectChange={() => {
                       // onClick is handled by TreeDataItem, no explicit action needed here for now
                     }}
                     expandAll={false}
