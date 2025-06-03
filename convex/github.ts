@@ -347,16 +347,52 @@ export const fetchAndReturnGithubFileContent = action({
   },
 });
 
+export const fetchConfigFile = action({
+  args: {
+    id: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const configFiles = ["config.toml", "config.yaml", "config.yml", "config.json"];
+    for (const configFile of configFiles) {
+      try {
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: configFile,
+        });
+        if ("content" in response.data && typeof response.data.content === "string") {
+          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
+          return {
+            content: base64DecodedContent,
+            path: configFile,
+            name: configFile, // Or extract just the name if needed
+          };
+        }
+      } catch (error: any) {
+        if (error.status === 404) {
+          // File not found, try next one
+          continue;
+        }
+        // Other error
+        console.error(`Failed to fetch ${configFile}:`, error);
+        throw new Error(`Error retrieving configuration file ${configFile}`);
+      }
+    }
+    throw new Error("No configuration file found (tried .toml, .yaml, .yml, .json)");
+  },
+});
+
 export const parseAndSaveSettingsObject = action({
   args: {
     id: v.id("documents"),
     newSettings: v.string(),
+    configPath: v.string(), // Added configPath
   },
   handler: async (_, args) => {
     const contentResponse = await octokit.repos.getContent({
       owner: "hugotion",
       repo: args.id,
-      path: "config.toml",
+      path: args.configPath, // Use dynamic configPath
     });
 
     if (!Array.isArray(contentResponse.data) && contentResponse.data.type === 'file') {
@@ -367,8 +403,8 @@ export const parseAndSaveSettingsObject = action({
       await octokit.repos.createOrUpdateFileContents({
         owner: "hugotion",
         repo: args.id,
-        path: "config.toml",
-        message: "Changed config settings",
+        path: args.configPath, // Use dynamic configPath
+        message: `Changed config settings in ${args.configPath}`,
         content: Buffer.from(updatedConfig).toString("base64"),
         sha,
       });

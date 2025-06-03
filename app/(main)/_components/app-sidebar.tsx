@@ -14,10 +14,10 @@ import {
   Search,
   Settings,
   Trash,
-  Plus,
   MoreHorizontal,
   Edit,
 } from "lucide-react";
+import Image from "next/image";
 
 import {
   Sidebar,
@@ -368,7 +368,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     <Skeleton className="h-8 w-[80%]" />
                   </div>
                 ) : error ? (
-                  <div className="p-4 text-sm text-destructive">{error}</div>
+                  <div className="flex flex-col items-center justify-center p-4">
+                    <Image
+                      src="/documents.png"
+                      height="200"
+                      width="200"
+                      alt="Empty"
+                      className="dark:hidden"
+                    />
+                    <Image
+                      src="/documents-dark.png"
+                      height="200"
+                      width="200"
+                      alt="Empty"
+                      className="hidden dark:block"
+                    />
+                    <p className="mt-2 text-sm text-center text-muted-foreground">{error}</p>
+                  </div>
                 ) : (
                   <TreeView
                     data={displayTreeData}

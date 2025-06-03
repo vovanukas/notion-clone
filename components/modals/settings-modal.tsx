@@ -26,9 +26,10 @@ export const SettingsModal = () => {
   const params = useParams();
   const router = useRouter();
   const [config, setConfig] = useState<string>("");
+  const [configPath, setConfigPath] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchAndReturnConfigToml = useAction(api.github.fetchAndReturnGithubFileContent);
+  const fetchConfig = useAction(api.github.fetchConfigFile);
   const parseAndSaveSettingsObject = useAction(api.github.parseAndSaveSettingsObject);
   const remove = useMutation(api.documents.remove);
   const deleteRepo = useAction(api.github.deleteRepo);
@@ -38,11 +39,17 @@ export const SettingsModal = () => {
   useEffect(() => {
     async function loadConfig() {
       try {
-        const config = await fetchAndReturnConfigToml({
+        setLoading(true);
+        setError(null);
+        const result = await fetchConfig({
           id: id,
-          path: "config.toml",
         });
-        setConfig(config);
+        if (result && result.content && result.path) {
+          setConfig(result.content);
+          setConfigPath(result.path);
+        } else {
+          setError("Could not load configuration file or file is empty.");
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -50,10 +57,10 @@ export const SettingsModal = () => {
       }
     }
 
-    if (settings.isOpen) {
+    if (settings.isOpen && id) {
       loadConfig();
     }
-  }, [settings.isOpen, fetchAndReturnConfigToml, id]);
+  }, [settings.isOpen, fetchConfig, id]);
 
   const handleEditorChange = (value: string | undefined) => {
     setConfig(value || "");
@@ -64,6 +71,7 @@ export const SettingsModal = () => {
     parseAndSaveSettingsObject({
         id: id,
         newSettings: config,
+        configPath: configPath,
     });
 
     settings.onClose();
@@ -82,6 +90,22 @@ export const SettingsModal = () => {
       ]);
     } catch (err) {
       setError("Failed to delete repository: " + (err as Error).message);
+    }
+  };
+
+  const getEditorLanguage = () => {
+    if (!configPath) return "plaintext";
+    const extension = configPath.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case "toml":
+        return "ini";
+      case "yaml":
+      case "yml":
+        return "yaml";
+      case "json":
+        return "json";
+      default:
+        return "plaintext";
     }
   };
 
@@ -104,6 +128,7 @@ export const SettingsModal = () => {
           <Editor
             height="300px"
             defaultLanguage="ini"
+            language={getEditorLanguage()}
             value={config}
             onChange={handleEditorChange}
             theme="vs-dark"
