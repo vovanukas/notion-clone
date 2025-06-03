@@ -52,18 +52,18 @@ export const WebsiteSwitcher = () => {
   };
 
   React.useEffect(() => {
-    const handleThemeSubmit = async (themeUrl: string) => {
-      const promise = create({ title: "Untitled" }).then((documentId) => {
-        router.push(`/documents/${documentId}`);
-        return createRepo({ repoName: documentId, themeUrl });
-      });
+    const handleThemeSubmit = async (themeUrl: string, exampleSiteUrl: string) => {
+    const promise = create({ title: "Untitled" }).then((documentId) => {
+      router.push(`/documents/${documentId}`);
+        return createRepo({ repoName: documentId, themeUrl, exampleSiteUrl });
+    });
 
-      toast.promise(promise, {
-        loading: "Creating your website...",
-        success: "New website created!",
-        error: "Failed to create a new website.",
-      });
-    };
+    toast.promise(promise, {
+      loading: "Creating your website...",
+      success: "New website created!",
+      error: "Failed to create a new website.",
+    });
+  };
 
     themeSelector.onSubmit = handleThemeSubmit;
   }, [create, createRepo, router, themeSelector]);

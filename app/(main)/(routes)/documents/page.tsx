@@ -9,28 +9,36 @@ import { useAction, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { toast } from "sonner";
+import { useThemeSelector } from "@/hooks/use-theme-selector";
+import { useEffect } from "react";
 
 const DocumentsPage = () => {
     const { user } = useUser();
     const create = useMutation(api.documents.create);
     const createRepo = useAction(api.github.createRepo);
     const router = useRouter();
+    const themeSelector = useThemeSelector();
 
     const onCreate = () => {
-        const promise = create({ title: "Untitled" })
-            .then((documentId) => {
-                router.push(`documents/${documentId}`);
-                return createRepo({
-                    repoName: documentId
-                });
-            })
-
-        toast.promise(promise, {
-            loading: "Creating a new note...",
-            success: "New note created!",
-            error: "Failed to create a new note.",
-        })
+        themeSelector.onOpen();
     }
+
+    useEffect(() => {
+        const handleThemeSubmit = async (themeUrl: string, exampleSiteUrl: string) => {
+            const promise = create({ title: "Untitled" }).then((documentId) => {
+                router.push(`/documents/${documentId}`);
+                return createRepo({ repoName: documentId, themeUrl, exampleSiteUrl });
+            });
+
+            toast.promise(promise, {
+                loading: "Creating a new note...",
+                success: "New note created!",
+                error: "Failed to create a new note.",
+            });
+        };
+
+        themeSelector.onSubmit = handleThemeSubmit;
+    }, [create, createRepo, router, themeSelector]);
 
     return ( 
         <div className="h-full flex flex-col items-center justify-center space-y-4">

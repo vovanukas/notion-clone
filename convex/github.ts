@@ -15,9 +15,13 @@ const octokit = new Octokit({
 export const createRepo = action({
   args: { 
     repoName: v.id("documents"),
+    themeUrl: v.string(),
+    exampleSiteUrl: v.string(),
    },
   handler: async (ctx, args) => {
     console.log("Creating repo...");
+    console.log("Theme URL:", args.themeUrl);
+    console.log("Example Site URL:", args.exampleSiteUrl);
     const identity = await ctx.auth.getUserIdentity();
 
     if (!identity) {
@@ -30,6 +34,16 @@ export const createRepo = action({
     })
 
     try {
+      // Parse the theme URL to get owner and repo name
+      const themeUrlMatch = args.themeUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/) ||
+                           args.themeUrl.match(/gitlab\.com\/([^\/]+)\/([^\/]+)/);
+
+      if (!themeUrlMatch) {
+        throw new Error("Invalid theme URL format");
+      }
+
+      const themeName = themeUrlMatch[2]; // Get the repo name (second capture group)
+
       // Step 1: Create a new repository in the organization
       const response = await octokit.repos.createInOrg({
         org: "hugotion", // Replace with your org name
@@ -68,19 +82,54 @@ jobs:
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
 
-    - name: Add Ananke theme as subtree
+    - name: Clone and extract example site
       run: |
-        git subtree add --prefix=themes/ananke https://github.com/theNewDynamic/gohugo-theme-ananke.git master --squash
+        # Create a temporary directory
+        TEMP_DIR=$(mktemp -d)
+        # Clone the theme repository
+        git clone ${args.themeUrl} $TEMP_DIR
+        # Checkout the exampleSite branch if it exists
+        if git -C $TEMP_DIR show-ref --verify --quiet refs/remotes/origin/exampleSite; then
+          git -C $TEMP_DIR checkout exampleSite
+        fi
+        # Move all contents from temp directory to current directory
+        mv $TEMP_DIR/* .
+        mv $TEMP_DIR/.* . 2>/dev/null || true
+        # Clean up
+        rm -rf $TEMP_DIR
 
-    - name: Copy example site content
+    - name: Check theme installation
+      id: theme_check
       run: |
-        cp -r themes/ananke/exampleSite/* ./
-        rm go.mod go.sum
+        # Check for theme in themes directory
+        if [ -d "themes/${themeName}" ]; then
+          echo "theme_exists=true" >> $GITHUB_OUTPUT
+        # Check for theme in go.mod
+        elif [ -f "go.mod" ] && grep -q "${themeName}" go.mod; then
+          echo "theme_exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "theme_exists=false" >> $GITHUB_OUTPUT
+        fi
 
-    - name: Modify configuration
+    - name: Install theme if needed
+      if: steps.theme_check.outputs.theme_exists == 'false'
       run: |
-        sed -i 's|^theme *= *.*|theme = "ananke"|' config.toml
-      
+        # Create themes directory if it doesn't exist
+        mkdir -p themes
+        # Add theme as submodule
+        git submodule add ${args.themeUrl} themes/${themeName}
+        # Update theme parameter in config file
+        for config in config.toml config.yaml config.yml; do
+          if [ -f "$config" ]; then
+            if [[ "$config" == *.toml ]]; then
+              sed -i "s|^theme *= *.*|theme = \\"${themeName}\\""|" "$config"
+            elif [[ "$config" == *.yaml ]] || [[ "$config" == *.yml ]]; then
+              sed -i "s|^theme:.*|theme: ${themeName}|" "$config"
+            fi
+            break
+          fi
+        done
+
     - name: Delete Workflow File
       run: |
         rm .github/workflows/hugo-setup.yml
@@ -90,7 +139,7 @@ jobs:
         GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       run: |
         git add .
-        git commit -m "Initial setup with Ananke theme"
+        git commit -m "Initial setup with ${themeName} theme"
         git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugotion/\${{ github.event.repository.name }}.git main
 
     - name: Workflow Webhook Action
@@ -101,7 +150,6 @@ jobs:
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
         data: '{ "workflowRunning": false }'
 `;
-
 
       // Commit the workflow file to the repository
       await octokit.repos.createOrUpdateFileContents({

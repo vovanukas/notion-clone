@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 interface ThemeSelectorStore {
   isOpen: boolean;
-  onSubmit: (themeUrl: string) => void;
+  onSubmit: (themeUrl: string, exampleSiteUrl: string) => void;
   onOpen: () => void;
   onClose: () => void;
 }
