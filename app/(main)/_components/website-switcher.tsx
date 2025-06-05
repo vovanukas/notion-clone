@@ -84,7 +84,7 @@ export const WebsiteSwitcher = () => {
                 <span className="truncate font-semibold">
                   {currentDocument?.title}
                 </span>
-                <span className="truncate text-xs">Team Plan</span>
+                <span className="truncate text-xs">Closed Beta</span>
               </div>
               <ChevronsUpDown className="ml-auto" />
             </SidebarMenuButton>

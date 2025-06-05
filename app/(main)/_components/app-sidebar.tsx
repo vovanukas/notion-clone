@@ -109,7 +109,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       await refreshTree();
     }
     loadFileTree();
-  }, [params.documentId, document, refreshTree]);
+  }, [params.documentId, document?.workflowRunning, refreshTree]);
 
   const handleCreateItem = async (parentId: string | undefined, type: "file" | "folder") => {
     if (!params.documentId) return;
