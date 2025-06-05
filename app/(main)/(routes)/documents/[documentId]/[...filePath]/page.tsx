@@ -14,6 +14,7 @@ import { useAppSidebar } from "@/hooks/use-app-sidebar";
 import { useCreateBlockNote } from "@blocknote/react";
 import { PartialBlock } from "@blocknote/core";
 import { HugoFrontmatter } from "@/types/hugo";
+import Image from "next/image";
 
 interface FilePathPageProps {
     params: Promise<{
@@ -105,7 +106,27 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     }
 
     if (document === null || error) {
-        return <div>Not Found...</div>;
+        return (
+            <div className="h-full flex flex-col items-center justify-center space-y-4">
+                <Image
+                    src="/documents.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="dark:hidden"
+                />
+                <Image
+                    src="/documents-dark.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="hidden dark:block"
+                />
+                <p className="text-muted-foreground text-lg">
+                    We are having trouble loading this page. Please try again later.
+                </p>
+            </div>
+        );
     }
 
     const coverImageUrl = `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static/${metadata?.featured_image}`;
