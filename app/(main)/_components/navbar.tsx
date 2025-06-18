@@ -82,7 +82,9 @@ export const Navbar = () => {
             <MenuIcon />
           </Button>
           <div className="flex items-center justify-between w-full">
-            <Title initialData={document} />
+            <div className="flex items-center gap-x-2">
+              <Title initialData={document} />
+            </div>
             <div className="flex items-center gap-x-2">
               {changedFiles.length !== 0 && <Button onClick={saveChanges}>Save</Button>}
               <Publish initialData={document} />

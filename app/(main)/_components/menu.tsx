@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/clerk-react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -28,18 +28,20 @@ export const Menu = ({
     const router = useRouter();
     const { user } = useUser();
 
-    const archive = useMutation(api.documents.archive);
+    const remove = useMutation(api.documents.remove);
+    const deleteRepo = useAction(api.github.deleteRepo);
 
-    const onArchive = () => {
-        const promise = archive({ id:documentId });
-
-        toast.promise(promise, {
-            loading: "Moving to trash...",
-            success: "Moved to trash!",
-            error: "Failed to archive note."
-        });
-
+    const onDeleteSitePermanently = async () => {
         router.push("/documents");
+        const promise = Promise.all([
+            deleteRepo({ id: documentId }),
+            remove({ id: documentId })
+        ]);
+        toast.promise(promise, {
+            loading: "Deleting site...",
+            success: "Site deleted permanently!",
+            error: "Failed to delete site."
+        });
     }
 
     return (
@@ -50,13 +52,9 @@ export const Menu = ({
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-60" align="end" alignOffset={8} forceMount>
-                <DropdownMenuItem onClick={onArchive}>
+                <DropdownMenuItem onClick={onDeleteSitePermanently} className="text-destructive focus:text-red-600">
                     <Trash className="h-4 w-4 mr-2" />
-                    Delete
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {}}>
-                    <UploadCloudIcon className="h-4 w-4 mr-2" />
-                    Upload to Website
+                    Delete Site Permanently
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <div className="text-xs text-muted-foreground p-2">

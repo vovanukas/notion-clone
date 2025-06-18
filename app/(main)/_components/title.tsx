@@ -8,6 +8,8 @@ import { Doc } from "@/convex/_generated/dataModel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { IconPicker } from "@/components/icon-picker";
+import { SmilePlus } from "lucide-react";
 
 interface TitleProps {
     initialData: Doc<"documents">;
@@ -53,9 +55,27 @@ export const Title = ({
         }
     };
 
+    const handleIconChange = (icon: string) => {
+        update({
+            id: initialData._id,
+            icon,
+        });
+    };
+
+    const handleIconRemove = () => {
+        update({
+            id: initialData._id,
+            icon: ""
+        });
+    };
+
     return (
-        <div className="flex items-center gap-x-1">
-            {!!initialData.icon && <p>{initialData.icon}</p>}
+        <div className="flex items-center gap-x-2">
+            <IconPicker onChange={handleIconChange} onRemove={handleIconRemove}>
+                <span className="cursor-pointer">
+                    {initialData.icon ? initialData.icon : <SmilePlus className="h-4 w-4 text-muted-foreground" />}
+                </span>
+            </IconPicker>
             {isEditing ? (
                 <Input
                     className="h-7 px-2 focus-visible:ring-transparent"
@@ -84,6 +104,9 @@ export const Title = ({
 
 Title.Skeleton = function TitleSkeleton() {
     return (
-        <Skeleton className="h-6 w-20 rounded-md"/>
+        <div className="flex items-center gap-x-2">
+            <Skeleton className="h-6 w-6 rounded-md"/>
+            <Skeleton className="h-6 w-20 rounded-md"/>
+        </div>
     )
 }

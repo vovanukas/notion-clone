@@ -2,6 +2,7 @@
 
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { useTheme } from "next-themes";
+import { Button } from "./ui/button";
 
 import {
     Popover,
@@ -13,12 +14,14 @@ interface IconPickerProps {
     onChange: (icon: string) => void;
     children: React.ReactNode;
     asChild?: boolean;
+    onRemove?: () => void;
 };
 
 export const IconPicker = ({
     onChange,
     children,
-    asChild
+    asChild,
+    onRemove
 }: IconPickerProps) => {
     const { resolvedTheme } = useTheme();
     const currentTheme = (resolvedTheme || "light") as keyof typeof themeMap
@@ -36,6 +39,16 @@ export const IconPicker = ({
                 {children}
             </PopoverTrigger>
             <PopoverContent className="p-0 w-full border-none shadow-none">
+                {onRemove && (
+                    <Button
+                        onClick={onRemove}
+                        className="w-full justify-start text-xs rounded-none p-2 text-muted-foreground"
+                        variant="ghost"
+                        size="sm"
+                    >
+                        Remove Icon
+                    </Button>
+                )}
                 <EmojiPicker 
                     height={350}
                     theme={theme}
