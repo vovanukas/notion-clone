@@ -13,62 +13,82 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useThemeSelector } from "@/hooks/use-theme-selector";
+import { useTemplateSelector } from "@/hooks/use-template-selector";
+import { TemplateSelectorModal } from "./template-selector-modal";
+import { toast } from "sonner";
+import { useAction, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useRouter } from "next/navigation";
 
 export const ThemeSelectorModal = () => {
   const themeSelector = useThemeSelector();
+  const templateSelector = useTemplateSelector();
   const [siteName, setSiteName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const create = useMutation(api.documents.create);
+  const createRepo = useAction(api.github.createRepo);
+  const router = useRouter();
 
-  const validateInput = () => {
-    if (!siteName) {
-      setError("Site name is required");
-      return false;
-    }
-    if (siteName.includes(" ")) {
-      setError("Site name cannot contain spaces");
-      return false;
-    }
-    setError(null);
-    return true;
+  const handleChooseTemplate = () => {
+    themeSelector.onClose();
+    templateSelector.onOpen();
   };
 
-  const handleSubmit = () => {
-    if (validateInput()) {
-      themeSelector.onSubmit(siteName);
-      setSiteName("");
-      themeSelector.onClose();
-    }
+  const handleCreateWebsite = () => {
+    const promise = create({ title: siteName }).then((documentId) => {
+      router.push(`/documents/${documentId}`);
+      return createRepo({
+        repoName: documentId,
+        siteName: siteName || "Untitled",
+        siteTemplate: templateSelector.selectedTemplate!
+      });
+    });
+
+    toast.promise(promise, {
+      loading: "Creating your website...",
+      success: "New website created!",
+      error: "Failed to create a new website.",
+    });
+    setSiteName("");
+    templateSelector.onSelect(null);
+    themeSelector.onClose();
   };
 
   return (
-    <Dialog open={themeSelector.isOpen} onOpenChange={themeSelector.onClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Select Site</DialogTitle>
-          <DialogDescription>
-            Enter the name of the site you want to use (e.g., ananke)
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="site-name">Site Name *</Label>
-            <Input
-              id="site-name"
-              placeholder="e.g., ananke"
-              value={siteName}
-              onChange={(e) => setSiteName(e.target.value)}
-              className={error ? "border-red-500" : ""}
-            />
+    <>
+      <Dialog open={themeSelector.isOpen} onOpenChange={themeSelector.onClose}>
+        <DialogContent className="sm:max-w-[425px] flex flex-col min-h-[300px]">
+          <DialogHeader>
+            <DialogTitle>Create New Website</DialogTitle>
+            <DialogDescription>
+              {templateSelector.selectedTemplate
+                ? `Using template: ${templateSelector.selectedTemplate} - Now give your website a name`
+                : "Start by choosing a template, then give your website a name"
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 flex-1">
+            <div className="grid gap-2">
+              <Label htmlFor="site-name">Website Name *</Label>
+              <Input
+                id="site-name"
+                placeholder="Untitled"
+                value={siteName}
+                onChange={(e) => setSiteName(e.target.value)}
+              />
+            </div>
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={themeSelector.onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit}>Continue</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-auto">
+            <Button variant="outline" onClick={themeSelector.onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleChooseTemplate}>
+              Choose Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TemplateSelectorModal onConfirm={handleCreateWebsite} />
+    </>
   );
 }; 

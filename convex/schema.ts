@@ -15,5 +15,19 @@ export default defineSchema({
         websiteUrl: v.optional(v.any()),
     })
     .index("by_user", ["userId"])
-    .index("by_user_parent", ["userId", "parentDocument"])
+    .index("by_user_parent", ["userId", "parentDocument"]),
+    
+    hugoTemplates: defineTable({
+        name: v.string(),
+        description: v.string(),
+        previewImage: v.string(),
+        demoLink: v.optional(v.string()),
+        repositoryUrl: v.string(),
+        folderName: v.string(),
+        features: v.array(v.string()),
+        category: v.string(),
+        isActive: v.boolean(),
+    })
+    .index("by_active", ["isActive"])
+    .index("by_category", ["category"])
 })

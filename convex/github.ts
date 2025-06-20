@@ -16,6 +16,7 @@ export const createRepo = action({
   args: { 
     repoName: v.id("documents"),
     siteName: v.string(),
+    siteTemplate: v.string(),
    },
   handler: async (ctx, args) => {
     console.log("Creating repo...");
@@ -29,6 +30,7 @@ export const createRepo = action({
     ctx.runMutation(api.documents.update, {
       id: args.repoName,
       workflowRunning: true,
+      title: args.siteName,
     })
 
     try {
@@ -77,8 +79,8 @@ jobs:
         # Clone the sites repository
         git clone https://github.com/vovanukas/hugo-sites.git $TEMP_DIR
         # Copy the specific site contents
-        cp -r $TEMP_DIR/${args.siteName}/* .
-        cp -r $TEMP_DIR/${args.siteName}/.* . 2>/dev/null || true
+        cp -r $TEMP_DIR/${args.siteTemplate}/* .
+        cp -r $TEMP_DIR/${args.siteTemplate}/.* . 2>/dev/null || true
         # Clean up
         rm -rf $TEMP_DIR
 
@@ -91,7 +93,7 @@ jobs:
         GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
       run: |
         git add .
-        git commit -m "Initial setup with ${args.siteName} site"
+        git commit -m "Initial setup with ${args.siteTemplate} site"
         git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugotion/\${{ github.event.repository.name }}.git main
 
     - name: Workflow Webhook Action

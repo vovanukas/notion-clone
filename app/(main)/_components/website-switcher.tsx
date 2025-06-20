@@ -19,11 +19,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useParams, useRouter } from "next/navigation"
-import { useAction, useMutation, useQuery } from "convex/react"
+import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { Id } from "@/convex/_generated/dataModel"
 import { Icon } from "@radix-ui/react-select"
-import { toast } from "sonner"
 import { useThemeSelector } from "@/hooks/use-theme-selector"
 
 export const WebsiteSwitcher = () => {
@@ -32,9 +31,6 @@ export const WebsiteSwitcher = () => {
   const { isMobile } = useSidebar()
   const themeSelector = useThemeSelector();
   const [open, setOpen] = React.useState(false);
-
-  const create = useMutation(api.documents.create);
-  const createRepo = useAction(api.github.createRepo);
 
   const documents = useQuery(api.documents.getWebsites, {});
   const currentDocument = useQuery(
@@ -50,23 +46,6 @@ export const WebsiteSwitcher = () => {
     setOpen(false);
     themeSelector.onOpen();
   };
-
-  React.useEffect(() => {
-    const handleThemeSubmit = async (siteName: string) => {
-      const promise = create({ title: "Untitled" }).then((documentId) => {
-        router.push(`/documents/${documentId}`);
-        return createRepo({ repoName: documentId, siteName });
-      });
-
-      toast.promise(promise, {
-        loading: "Creating your website...",
-        success: "New website created!",
-        error: "Failed to create a new website.",
-      });
-    };
-
-    themeSelector.onSubmit = handleThemeSubmit;
-  }, [create, createRepo, router, themeSelector]);
 
   return (
     <SidebarMenu>
