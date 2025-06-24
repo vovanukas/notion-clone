@@ -88,7 +88,6 @@ export const WebsiteSwitcher = () => {
                   {document?.icon ? document.icon : <Icon />}
                 </div>
                 {document.title}
-                <DropdownMenuShortcut>⌘{index + 1}</DropdownMenuShortcut>
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />

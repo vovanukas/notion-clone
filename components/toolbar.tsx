@@ -16,12 +16,14 @@ interface ToolbarProps {
     initialData: HugoFrontmatter;
     preview?: boolean;
     onTitleChange: (value: string) => void;
+    showIconPicker?: boolean;
 }
 
 export const Toolbar = ({
     initialData,
     preview,
-    onTitleChange
+    onTitleChange,
+    showIconPicker = true
 }: ToolbarProps) => {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -84,7 +86,7 @@ export const Toolbar = ({
 
     return (
         <div className="pl-[54px] group relative">
-            {!!initialData.icon && !preview && (
+            {!!initialData.icon && !preview && showIconPicker && (
                 <div className="flex items-center gap-x-2 group/icon pt-6">
                     <IconPicker onChange={onIconSelect}>
                         <p className="text-6xl hover:opacity-75 transition">
@@ -101,13 +103,13 @@ export const Toolbar = ({
                     </Button>
                 </div>
             )}
-            {!!initialData.icon && preview && (
+            {!!initialData.icon && preview && showIconPicker && (
                 <p className="text-6xl pt-6">
                     {initialData.icon}
                 </p>
             )}
             <div className="opacity-0 group-hover:opacity-100 flex items-center gap-x-1 py-4">
-                {!initialData.icon && !preview && (
+                {!initialData.icon && !preview && showIconPicker && (
                     <IconPicker asChild onChange={onIconSelect}>
                         <Button 
                             className="text-muted-foreground text-xs" 

@@ -138,6 +138,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
                 <Toolbar
                     onTitleChange={onTitleChange}
                     initialData={{ ...document, ...metadata }}
+                    showIconPicker={false}
                 />
                 <Editor onChange={onChange} initialContent={content} editable={true} />
             </div>

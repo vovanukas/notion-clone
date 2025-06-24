@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { File } from "lucide-react";
-import { useQuery } from "convex/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { useUser } from "@clerk/clerk-react";
 
 import {
@@ -15,13 +14,16 @@ import {
     CommandList,
 } from "@/components/ui/command"
 import { useSearch } from "@/hooks/use-search"; 
-import { api } from "@/convex/_generated/api";
+import { useAppSidebar } from "@/hooks/use-app-sidebar";
+import { HugoFileNode } from "@/types/hugo";
 
 export const SearchCommand = () => {
     const { user } = useUser();
     const router = useRouter();
-    const documents = useQuery(api.documents.getSearch);
+    const params = useParams();
+    const { treeData } = useAppSidebar();
     const [isMounted, setIsMounted] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
 
     const toggle = useSearch((store) => store.toggle);
     const isOpen = useSearch((store) => store.isOpen);
@@ -43,8 +45,74 @@ export const SearchCommand = () => {
         return () => document.removeEventListener("keydown", down);
     }, [toggle]);
 
-    const onSelect = (id: string) => {
-        router.push(`/documents/${id}`);
+    // Recursively flatten the tree to get all files
+    const flattenTree = (nodes: HugoFileNode[]): HugoFileNode[] => {
+        const result: HugoFileNode[] = [];
+
+        const traverse = (node: HugoFileNode) => {
+            result.push(node);
+            if (node.children) {
+                node.children.forEach(traverse);
+            }
+        };
+
+        nodes.forEach(traverse);
+        return result;
+    };
+
+    // Filter files based on search query
+    const filteredFiles = useMemo(() => {
+        if (!treeData.length) return [];
+
+        const allFiles = flattenTree(treeData);
+
+        // If no search query, show all files
+        if (!searchQuery.trim()) {
+            return allFiles.filter(file => file.type === 'blob').slice(0, 20); // Limit to 20 results
+        }
+
+        const query = searchQuery.toLowerCase();
+
+        return allFiles.filter(file => {
+            // Only show files (blob type), not folders
+            if (file.type !== 'blob') return false;
+
+            // Filter by file name (without extension)
+            const fileName = file.name.toLowerCase();
+            const nameWithoutExt = fileName.replace(/\.(md|markdown)$/, '');
+
+            return fileName.includes(query) || nameWithoutExt.includes(query);
+        }).slice(0, 10); // Limit to 10 results
+    }, [treeData, searchQuery]);
+
+    // Helper function to get display path
+    const getDisplayPath = (filePath: string): string => {
+        // Remove 'content/' prefix if it exists
+        let path = filePath;
+        if (path.startsWith('content/')) {
+            path = path.substring('content/'.length);
+        }
+
+        // Get the directory path (everything except the filename)
+        const pathParts = path.split('/');
+        if (pathParts.length <= 1) {
+            return ''; // File is in root
+        }
+
+        // Return the directory path
+        return pathParts.slice(0, -1).join('/');
+    };
+
+    const onSelect = (filePath: string) => {
+        if (!params.documentId) return;
+
+        // Remove 'content/' prefix if it exists
+        let navigationPath = filePath;
+        if (navigationPath.startsWith('content/')) {
+            navigationPath = navigationPath.substring('content/'.length);
+        }
+
+        router.push(`/documents/${params.documentId}/${navigationPath}`);
         onClose();
     };
 
@@ -55,26 +123,34 @@ export const SearchCommand = () => {
     return (
         <CommandDialog open={isOpen} onOpenChange={onClose}>
             <CommandInput
-                placeholder={`Search ${user?.fullName}'s Jotion`}
+                placeholder={`Search files in ${user?.fullName}'s site...`}
+                value={searchQuery}
+                onValueChange={setSearchQuery}
             />
             <CommandList>
-                <CommandEmpty>No results found...</CommandEmpty>
-                <CommandGroup heading="Documents">
-                    {documents?.map((document) => (
-                        <CommandItem 
-                            key={document._id}
-                            value={`${document._id}-${document.title}`}
-                            title={document.title}
-                            onSelect={() => onSelect(document._id)}
-                        >
-                            {document.icon ? (
-                                <p className="mr-2 text-[18px]">{document.icon}</p>
-                            ) : (
+                <CommandEmpty>No files found...</CommandEmpty>
+                <CommandGroup heading="Files">
+                    {filteredFiles.map((file) => {
+                        const displayPath = getDisplayPath(file.path);
+                        return (
+                            <CommandItem
+                                key={file.path}
+                                value={`${file.path}-${file.name}`}
+                                title={file.name}
+                                onSelect={() => onSelect(file.path)}
+                            >
                                 <File className="mr-2 h-4 w-4" />
-                            )}
-                            <span>{document.title}</span>
-                        </CommandItem>
-                    ))}
+                                <div className="flex flex-col">
+                                    <span className="font-medium">{file.name}</span>
+                                    {displayPath && (
+                                        <span className="text-xs text-muted-foreground">
+                                            {displayPath}
+                                        </span>
+                                    )}
+                                </div>
+                            </CommandItem>
+                        );
+                    })}
                 </CommandGroup>
             </CommandList>
         </CommandDialog>

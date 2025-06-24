@@ -1,20 +1,18 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
-import dynamic from "next/dynamic";
-import { use, useMemo } from "react";
+import { use } from "react";
 import Editor from "@monaco-editor/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/spinner";
+import Image from "next/image";
 
 interface DocumentIdPageProps {
     params: Promise<{
@@ -27,15 +25,6 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
         documentId: documentId
     });
 
-    const update = useMutation(api.documents.update);
-
-    const onChange = (title: string) => {
-        update({
-            id: documentId,
-            title: title,
-        });
-    };
-
     // --- Config Editor State and Logic ---
     const router = useRouter();
     const [config, setConfig] = useState<string>("");
@@ -44,8 +33,6 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
     const [configError, setConfigError] = useState<string | null>(null);
     const fetchConfig = useAction(api.github.fetchConfigFile);
     const parseAndSaveSettingsObject = useAction(api.github.parseAndSaveSettingsObject);
-    const remove = useMutation(api.documents.remove);
-    const deleteRepo = useAction(api.github.deleteRepo);
 
     useEffect(() => {
         async function loadConfig() {
@@ -88,18 +75,6 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
         }
     };
 
-    const handleConfigDelete = async () => {
-        try {
-            router.push("/documents");
-            await Promise.all([
-                deleteRepo({ id: documentId }),
-                remove({ id: documentId })
-            ]);
-        } catch (err) {
-            setConfigError("Failed to delete repository: " + (err as Error).message);
-        }
-    };
-
     const getEditorLanguage = () => {
         if (!configPath) return "plaintext";
         const extension = configPath.split('.').pop()?.toLowerCase();
@@ -134,8 +109,56 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
 
     if (document === null) {
         return (
-            <div>
-                Not Found...
+            <div className="h-full flex flex-col items-center justify-center space-y-4">
+                <Image
+                    src="/documents.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="dark:hidden"
+                />
+                <Image
+                    src="/documents-dark.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="hidden dark:block"
+                />
+                <p className="text-muted-foreground text-lg">
+                    We are having trouble loading your site. Please try again later.
+                </p>
+            </div>
+        );
+    }
+
+    if (configError) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center space-y-4">
+                <Image
+                    src="/documents.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="dark:hidden"
+                />
+                <Image
+                    src="/documents-dark.png"
+                    height="300"
+                    width="300"
+                    alt="Error"
+                    className="hidden dark:block"
+                />
+                <p className="text-muted-foreground text-lg">
+                    We couldn&apos;t fetch your config file.
+                </p>
+            </div>
+        );
+    }
+
+    if (configLoading) {
+        return (
+            <div className="h-full flex flex-col items-center justify-center space-y-4">
+                <Spinner size="lg" />
             </div>
         );
     }
@@ -143,14 +166,12 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
     return ( 
         <div className="pb-40">
             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
-                <div className="mt-10 p-6 border rounded bg-muted">
+                <div className="p-6 border rounded bg-muted">
                     <h2 className="text-lg font-semibold mb-2">Site Configuration</h2>
                     <p className="mb-4 text-sm text-muted-foreground">Modify your site settings. Click save when you&apos;re done.</p>
-                    {configLoading && <Spinner size="lg" />}
-                    {configError && <p style={{ color: "red" }}>Error: {configError}</p>}
                     <div className="grid gap-4 py-4 overflow-y-auto" style={{ maxHeight: "400px" }}>
                         <Editor
-                            height="300px"
+                            height="500px"
                             defaultLanguage="ini"
                             language={getEditorLanguage()}
                             value={config}
@@ -158,10 +179,7 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                             theme="vs-dark"
                         />
                     </div>
-                    <div className="flex justify-between mt-4">
-                        <Button type="button" variant="destructive" onClick={handleConfigDelete}>
-                            Delete Permanently
-                        </Button>
+                    <div className="flex justify-end mt-4">
                         <Button type="button" onClick={handleConfigSave}>
                             Save changes
                         </Button>

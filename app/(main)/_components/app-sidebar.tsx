@@ -4,7 +4,6 @@ import React, { useEffect, useCallback } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
-import { useSettings } from "@/hooks/use-settings";
 import { useParams, useRouter } from "next/navigation";
 import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
 import { toast } from "sonner";
@@ -12,7 +11,7 @@ import {
   File as FileIcon,
   Folder as FolderIcon,
   Search,
-  Settings,
+  Home,
   Trash,
   MoreHorizontal,
   Edit,
@@ -32,8 +31,6 @@ import {
 } from "@/components/ui/sidebar";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { TrashBox } from "./trash-box";
 import { WebsiteSwitcher } from "./website-switcher";
 import { TreeView, TreeDataItem } from "@/components/tree-view";
 import { Id } from "@/convex/_generated/dataModel";
@@ -56,9 +53,8 @@ interface TreeNode {
 }
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError } = useAppSidebar();
+  const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError, resetSidebarState } = useAppSidebar();
 
-  const settings = useSettings();
   const search = useSearch();
   const router = useRouter();
   const params = useParams();
@@ -72,7 +68,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const renameGithubPath = useAction(api.github.renamePathInRepo);
 
   const refreshTree = useCallback(async () => {
-    if (!params.documentId) return;
+    if (!params.documentId) {
+      resetSidebarState();
+      return;
+    }
+
     setIsLoading(true);
     try {
       const promise = fetchContentTree({
@@ -86,6 +86,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
 
       const result = await promise;
+      if (!result || result.length === 0) {
+        resetSidebarState();
+        return;
+      }
+
       const processedResult = result.map(item => ({
         ...item,
         path: typeof item.path === 'string' ? item.path : '',
@@ -98,18 +103,55 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } catch (err) {
       console.error("Failed to fetch GitHub file tree:", err);
       setError("Failed to load file structure. Please try again later.");
+      resetSidebarState();
     } finally {
       setIsLoading(false);
     }
-  }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError]);
+  }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
 
   useEffect(() => {
     async function loadFileTree() {
-      if (!params.documentId || !document || document.workflowRunning) return;
-      await refreshTree();
+      if (!params.documentId) {
+        resetSidebarState();
+        return;
+      }
+
+      if (!document || document.workflowRunning) {
+        resetSidebarState();
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const promise = fetchContentTree({
+          id: params.documentId as Id<"documents">,
+        });
+
+        const result = await promise;
+        if (!result || result.length === 0) {
+          resetSidebarState();
+          return;
+        }
+
+        const processedResult = result.map(item => ({
+          ...item,
+          path: typeof item.path === 'string' ? item.path : '',
+          type: typeof item.type === 'string' ? item.type : 'blob',
+          sha: typeof item.sha === 'string' ? item.sha : String(Math.random()),
+          name: typeof item.path === 'string' ? item.path.split('/').pop() || item.path : 'Unnamed',
+        }));
+        setItems(processedResult as GitHubList[]);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch GitHub file tree:", err);
+        setError("Failed to load file structure. Please try again later.");
+        resetSidebarState();
+      } finally {
+        setIsLoading(false);
+      }
     }
     loadFileTree();
-  }, [params.documentId, document?.workflowRunning, refreshTree]);
+  }, [params.documentId, document?.workflowRunning, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
 
   const handleCreateItem = async (parentId: string | undefined, type: "file" | "folder") => {
     if (!params.documentId) return;
@@ -343,15 +385,23 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         {params.documentId && (
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
-            <Item label="Settings" icon={Settings} onClick={settings.onOpen} />
-            <Popover>
+            <Item
+              label="Home"
+              icon={Home}
+              onClick={() => {
+                if (params.documentId) {
+                  router.push(`/documents/${params.documentId}`);
+                }
+              }}
+            />
+            {/* <Popover>
               <PopoverTrigger className="w-full">
                 <Item label="Trash" icon={Trash} />
               </PopoverTrigger>
               <PopoverContent side="top" className="p-0 w-72">
                 <TrashBox />
               </PopoverContent>
-            </Popover>
+            </Popover> */}
             <SidebarSeparator />
             <SidebarGroup>
               <SidebarGroupLabel>Content</SidebarGroupLabel>
