@@ -11,22 +11,26 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
     }
     const token = authHeader.split(' ')[1];
 
-    if (typeof data.workflowRunning !== 'boolean') {
-        throw new Error("Invalid or missing data: 'workflowRunning' must be a boolean");
+    if (!data.buildStatus || !["BUILT", "ERROR"].includes(data.buildStatus)) {
+        throw new Error("Invalid or missing data: 'buildStatus' must be 'BUILT' or 'ERROR'");
     }
 
-    const pagesUrl = await ctx.runAction(api.github.getPagesUrl, {
+    let pagesUrl;
+    if (data.buildStatus === "BUILT") {
+        pagesUrl = await ctx.runAction(api.github.getPagesUrl, {
         id: id
-    })
+        });
+    }
 
-    await ctx.runMutation(api.documents.updatePagesBuildStatus, {
+    await ctx.runMutation(api.documents.updateBuildStatus, {
         id: id,
-        workflowRunning: data.workflowRunning,
-        websiteUrl: pagesUrl,
+        buildStatus: data.buildStatus,
+        websiteUrl: pagesUrl ?? undefined,
         callbackUserId: token,
     })
 
-    return new Response(repository, {
+    return new Response(JSON.stringify({ success: true }), {
       status: 200,
+      headers: { 'Content-Type': 'application/json' }
     });
   }); 

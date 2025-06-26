@@ -11,7 +11,7 @@ export default defineSchema({
         coverImage: v.optional(v.string()),
         icon: v.optional(v.string()),
         isPublished: v.boolean(),
-        workflowRunning: v.boolean(),
+        buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
         websiteUrl: v.optional(v.any()),
     })
     .index("by_user", ["userId"])

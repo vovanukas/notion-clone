@@ -116,7 +116,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         return;
       }
 
-      if (!document || document.workflowRunning) {
+      if (!document || document.buildStatus === "BUILDING") {
         resetSidebarState();
         return;
       }
@@ -151,7 +151,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       }
     }
     loadFileTree();
-  }, [params.documentId, document?.workflowRunning, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
+  }, [params.documentId, document?.buildStatus, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
 
   const handleCreateItem = async (parentId: string | undefined, type: "file" | "folder") => {
     if (!params.documentId) return;
@@ -406,7 +406,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             <SidebarGroup>
               <SidebarGroupLabel>Content</SidebarGroupLabel>
               <SidebarGroupContent>
-                {isLoading && document?.workflowRunning ? (
+                {isLoading && document?.buildStatus === "BUILDING" ? (
                   <div className="flex flex-col items-center justify-center p-4">
                     <Spinner />
                     <div className="mt-2 text-sm">Creating site...</div>

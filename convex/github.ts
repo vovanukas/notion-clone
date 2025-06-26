@@ -29,7 +29,7 @@ export const createRepo = action({
 
     ctx.runMutation(api.documents.update, {
       id: args.repoName,
-      workflowRunning: true,
+      buildStatus: "BUILDING",
       title: args.siteName,
     })
 
@@ -96,13 +96,23 @@ jobs:
         git commit -m "Initial setup with ${args.siteTemplate} site"
         git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugotion/\${{ github.event.repository.name }}.git main
 
-    - name: Workflow Webhook Action
+    - name: Notify on success
+      if: success()
       uses: distributhor/workflow-webhook@v3
       with:
         webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "workflowRunning": false }'
+        data: '{ "buildStatus": "BUILT" }'
+
+    - name: Notify on failure
+      if: failure()
+      uses: distributhor/workflow-webhook@v3
+      with:
+        webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+        webhook_auth_type: "bearer"
+        webhook_auth: \${{ secrets.CALLBACK_BEARER }}
+        data: '{ "buildStatus": "ERROR" }'
 `;
 
       // Commit the workflow file to the repository
@@ -141,7 +151,7 @@ export const publishPage = action({
 
     ctx.runMutation(api.documents.update, {
       id: args.id,
-      workflowRunning: true,
+      buildStatus: "BUILDING",
     })
 
     await ctx.runAction(api.github.encryptAndPublishSecret, ({
@@ -207,13 +217,23 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Workflow Webhook Action
+      - name: Notify on success
+        if: success()
         uses: distributhor/workflow-webhook@v3
         with:
           webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "workflowRunning": false }'`;
+          data: '{ "buildStatus": "BUILT" }'
+
+      - name: Notify on failure
+        if: failure()
+        uses: distributhor/workflow-webhook@v3
+        with:
+          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_auth_type: "bearer"
+          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
+          data: '{ "buildStatus": "ERROR" }'`;
     
         await octokit.repos.createOrUpdateFileContents({
           owner: "hugotion", // Replace with your org name

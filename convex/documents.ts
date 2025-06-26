@@ -102,7 +102,7 @@ export const create = mutation ({
             userId,
             isArchived: false,
             isPublished: false,
-            workflowRunning: true,
+            buildStatus: "BUILDING",
         });
 
         return document;
@@ -278,8 +278,7 @@ export const update = mutation({
         coverImage: v.optional(v.string()),
         icon: v.optional(v.string()),
         isPublished: v.optional(v.boolean()),
-        workflowRunning: v.optional(v.boolean()),
-        websiteUrl: v.optional(v.string()),
+        buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -368,11 +367,11 @@ export const removeCoverImage = mutation({
     }
 })
 
-export const updatePagesBuildStatus = mutation({
+export const updateBuildStatus = mutation({
     args: {
         id: v.id("documents"),
-        workflowRunning: v.optional(v.boolean()),
-        websiteUrl: v.optional(v.any()),
+        buildStatus: v.union(v.literal("BUILT"), v.literal("ERROR")),
+        websiteUrl: v.optional(v.string()),
         callbackUserId: v.string(),
     },
     handler: async (ctx, args) => {
