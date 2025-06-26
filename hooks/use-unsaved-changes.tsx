@@ -1,9 +1,9 @@
 "use client";
 
 import { create } from "zustand";
-import { FileContent, HugoFrontmatter } from "@/types/hugo";
+import { FileContent } from "@/types/hugo";
 
-type ChangedFile = FileContent & HugoFrontmatter;
+type ChangedFile = FileContent & { [key: string]: any };
 
 type UnsavedChangesStore = {
   changedFiles: ChangedFile[];
@@ -29,7 +29,7 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
           acc[key] = value;
         }
         return acc;
-      }, {} as Record<string, any>);
+      }, {} as Record<string, unknown>);
 
       if (existingFile) {
         Object.assign(existingFile, processedUpdates);

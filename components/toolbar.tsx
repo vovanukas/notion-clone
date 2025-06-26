@@ -10,11 +10,10 @@ import { IconPicker } from "./icon-picker";
 import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
 import { usePageSettings } from "@/hooks/use-page-settings";
-import { HugoFrontmatter } from "@/types/hugo";
 import { Doc } from "@/convex/_generated/dataModel";
 
 interface ToolbarProps {
-    initialData: Doc<"documents"> & HugoFrontmatter;
+    initialData: Doc<"documents"> & { [key: string]: any };
     preview?: boolean;
     onTitleChange: (value: string) => void;
     showIconPicker?: boolean;
