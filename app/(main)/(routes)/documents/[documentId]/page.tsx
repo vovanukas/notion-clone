@@ -1,16 +1,16 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SettingsModal } from "@/components/modals/settings-modal";
 import { use } from "react";
 import Editor from "@monaco-editor/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAction } from "convex/react";
-import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/spinner";
 import Image from "next/image";
 import { Loader } from "@/components/loader";
@@ -27,7 +27,6 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
     });
 
     // --- Config Editor State and Logic ---
-    const router = useRouter();
     const [config, setConfig] = useState<string>("");
     const [configPath, setConfigPath] = useState<string>("");
     const [configLoading, setConfigLoading] = useState<boolean>(true);
@@ -232,6 +231,7 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                     </div>
                 </div>
             </div>
+            <SettingsModal />
         </div>
      );
 }

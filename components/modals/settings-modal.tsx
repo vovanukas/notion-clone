@@ -1,4 +1,3 @@
-// TODO: Change to a form? Monaco editor might be too "codey" for regular people
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -11,44 +10,51 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useAction } from "convex/react";
-import { useSettings } from "@/hooks/use-settings";
+import { usePageSettings } from "@/hooks/use-page-settings";
 import { useParams } from "next/navigation";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Spinner } from "../spinner";
 import Editor from "@monaco-editor/react";
-import { useMutation } from "convex/react";
-import { useRouter } from "next/navigation";
 
 export const SettingsModal = () => {
-  const settings = useSettings();
+  const pageSettings = usePageSettings();
   const params = useParams();
-  const router = useRouter();
-  const [config, setConfig] = useState<string>("");
-  const [configPath, setConfigPath] = useState<string>("");
+  const [frontmatter, setFrontmatter] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchConfig = useAction(api.github.fetchConfigFile);
-  const parseAndSaveSettingsObject = useAction(api.github.parseAndSaveSettingsObject);
-  const remove = useMutation(api.documents.remove);
-  const deleteRepo = useAction(api.github.deleteRepo);
+  const [filePath, setFilePath] = useState<string>("");
+  
+  const fetchFileContent = useAction(api.github.fetchAndReturnGithubFileContent);
+  const createMarkdownFileInRepo = useAction(api.github.createMarkdownFileInRepo);
 
-  const id = params.documentId as Id<"documents">;
+  const documentId = params.documentId as Id<"documents">;
+  const filePathParam = params.filePath as string[];
 
   useEffect(() => {
-    async function loadConfig() {
+    async function loadFrontmatter() {
+      if (!pageSettings.isOpen || !documentId || !filePathParam) return;
+      
       try {
         setLoading(true);
         setError(null);
-        const result = await fetchConfig({
-          id: id,
+        
+        const filePathString = filePathParam.join('/');
+        const decodedPath = decodeURIComponent(filePathString);
+        setFilePath(decodedPath);
+        
+        const fileContent = await fetchFileContent({
+          id: documentId,
+          path: `content/${decodedPath}`,
         });
-        if (result && result.content && result.path) {
-          setConfig(result.content);
-          setConfigPath(result.path);
+
+        // Extract frontmatter from markdown file
+        const frontmatterMatch = fileContent.match(/^---\n([\s\S]*?)\n---/);
+        if (frontmatterMatch) {
+          setFrontmatter(frontmatterMatch[1]);
         } else {
-          setError("Could not load configuration file or file is empty.");
+          setFrontmatter("");
         }
       } catch (err) {
         setError((err as Error).message);
@@ -57,65 +63,47 @@ export const SettingsModal = () => {
       }
     }
 
-    if (settings.isOpen && id) {
-      loadConfig();
-    }
-  }, [settings.isOpen, fetchConfig, id]);
+    loadFrontmatter();
+  }, [pageSettings.isOpen, documentId, filePathParam, fetchFileContent]);
 
   const handleEditorChange = (value: string | undefined) => {
-    setConfig(value || "");
+    setFrontmatter(value || "");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     try {
-    parseAndSaveSettingsObject({
-        id: id,
-        newSettings: config,
-        configPath: configPath,
-    });
+      // Get the current file content to preserve the markdown content
+      const currentFileContent = await fetchFileContent({
+        id: documentId,
+        path: `content/${filePath}`,
+      });
 
-    settings.onClose();
+      // Extract the markdown content (everything after the frontmatter)
+      const contentMatch = currentFileContent.match(/^---\n[\s\S]*?\n---\n([\s\S]*)/);
+      const markdownContent = contentMatch ? contentMatch[1] : currentFileContent;
+
+      // Create new file content with updated frontmatter
+      const newFileContent = `---\n${frontmatter}\n---\n${markdownContent}`;
+
+      await createMarkdownFileInRepo({
+        id: documentId,
+        filePath: `content/${filePath}`,
+        content: newFileContent,
+      });
+
+      pageSettings.onClose();
     } catch (err) {
-      setError("Invalid JSON: " + (err as Error).message);
+      setError("Failed to save frontmatter: " + (err as Error).message);
     }
   };
 
-  const handleDelete = async () => {
-    try {
-      settings.onClose();
-      router.push("/documents");
-      await Promise.all([
-        deleteRepo({ id }),
-        remove({ id })
-      ]);
-    } catch (err) {
-      setError("Failed to delete repository: " + (err as Error).message);
-    }
-  };
-
-  const getEditorLanguage = () => {
-    if (!configPath) return "plaintext";
-    const extension = configPath.split('.').pop()?.toLowerCase();
-    switch (extension) {
-      case "toml":
-        return "ini";
-      case "yaml":
-      case "yml":
-        return "yaml";
-      case "json":
-        return "json";
-      default:
-        return "plaintext";
-    }
-  };
-
-        return (
-    <Dialog open={settings.isOpen} onOpenChange={settings.onClose}>
+  return (
+    <Dialog open={pageSettings.isOpen} onOpenChange={pageSettings.onClose}>
       <DialogContent className="sm:max-w-[800px]">
         <DialogHeader>
-          <DialogTitle>Settings</DialogTitle>
+          <DialogTitle>Page Settings</DialogTitle>
           <DialogDescription>
-            Modify your site settings. Click save when you&apos;re done.
+            Modify your page frontmatter. Click save when you&apos;re done.
           </DialogDescription>
         </DialogHeader>
 
@@ -127,22 +115,15 @@ export const SettingsModal = () => {
         >
           <Editor
             height="300px"
-            defaultLanguage="ini"
-            language={getEditorLanguage()}
-            value={config}
+            defaultLanguage="yaml"
+            language="yaml"
+            value={frontmatter}
             onChange={handleEditorChange}
             theme="vs-dark"
           />
         </div>
 
-        <DialogFooter className="flex justify-between">
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={handleDelete}
-          >
-            Delete Permanently
-          </Button>
+        <DialogFooter>
           <Button type="button" onClick={handleSave}>
             Save changes
           </Button>

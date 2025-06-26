@@ -1,19 +1,20 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { ImageIcon, Smile, X } from "lucide-react";
+import { ImageIcon, Smile, X, Settings } from "lucide-react";
 import { useMutation } from "convex/react";
 import TextareaAutosize from "react-textarea-autosize";
 
-import { Doc } from "@/convex/_generated/dataModel";
 import { api } from "@/convex/_generated/api";
 import { IconPicker } from "./icon-picker";
 import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
+import { usePageSettings } from "@/hooks/use-page-settings";
 import { HugoFrontmatter } from "@/types/hugo";
+import { Doc } from "@/convex/_generated/dataModel";
 
 interface ToolbarProps {
-    initialData: HugoFrontmatter;
+    initialData: Doc<"documents"> & HugoFrontmatter;
     preview?: boolean;
     onTitleChange: (value: string) => void;
     showIconPicker?: boolean;
@@ -33,6 +34,7 @@ export const Toolbar = ({
     const update = useMutation(api.documents.update);
     const removeIcon = useMutation(api.documents.removeIcon);
     const coverImage = useCoverImage();
+    const pageSettings = usePageSettings();
 
     useEffect(() => {
         setValue(initialData.title);
@@ -111,9 +113,9 @@ export const Toolbar = ({
             <div className="opacity-0 group-hover:opacity-100 flex items-center gap-x-1 py-4">
                 {!initialData.icon && !preview && showIconPicker && (
                     <IconPicker asChild onChange={onIconSelect}>
-                        <Button 
-                            className="text-muted-foreground text-xs" 
-                            variant="outline" 
+                        <Button
+                            className="text-muted-foreground text-xs"
+                            variant="outline"
                             size="sm"
                         >
                             <Smile className="h-4 w-4 mr-2" />
@@ -122,7 +124,7 @@ export const Toolbar = ({
                     </IconPicker>
                 )}
                 {!initialData.featured_image && !preview && (
-                    <Button 
+                    <Button
                         onClick={coverImage.onOpen}
                         className="text-muted-foreground text-xs"
                         variant="outline"
@@ -130,6 +132,17 @@ export const Toolbar = ({
                     >
                         <ImageIcon className="h-4 w-4 mr-2" />
                         Add cover
+                    </Button>
+                )}
+                {!preview && (
+                    <Button
+                        onClick={pageSettings.onOpen}
+                        className="text-muted-foreground text-xs"
+                        variant="outline"
+                        size="sm"
+                    >
+                        <Settings className="h-4 w-4 mr-2" />
+                        Page Settings
                     </Button>
                 )}
             </div>
