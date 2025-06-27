@@ -12,6 +12,7 @@ export default defineSchema({
         icon: v.optional(v.string()),
         isPublished: v.boolean(),
         buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
+        publishStatus: v.optional(v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR"))),
         websiteUrl: v.optional(v.any()),
     })
     .index("by_user", ["userId"])

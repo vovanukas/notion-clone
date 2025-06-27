@@ -15,6 +15,10 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
         throw new Error("Invalid or missing data: 'buildStatus' must be 'BUILT' or 'ERROR'");
     }
 
+    if (!data.publishStatus || !["PUBLISHING", "PUBLISHED", "ERROR"].includes(data.publishStatus)) {
+        throw new Error("Invalid or missing data: 'publishStatus' must be 'PUBLISHING', 'PUBLISHED' or 'ERROR'");
+    }
+
     let pagesUrl;
     if (data.buildStatus === "BUILT") {
         pagesUrl = await ctx.runAction(api.github.getPagesUrl, {
@@ -26,6 +30,12 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
         id: id,
         buildStatus: data.buildStatus,
         websiteUrl: pagesUrl ?? undefined,
+        callbackUserId: token,
+    })
+
+    await ctx.runMutation(api.documents.updatePublishStatus, {
+        id: id,
+        publishStatus: data.publishStatus,
         callbackUserId: token,
     })
 

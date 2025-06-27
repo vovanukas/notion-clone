@@ -7,7 +7,10 @@ import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 
 import { useTheme } from "next-themes";
-import { useEdgeStore } from "@/lib/edgestore";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useParams } from "next/navigation";
+import { Id } from "@/convex/_generated/dataModel";
 import { useEffect, useCallback, useRef } from "react";
 
 interface EditorProps {
@@ -16,17 +19,53 @@ interface EditorProps {
     editable?: boolean;
 }
 
+const generateUniqueFilename = (originalFilename: string): string => {
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 8);
+    const extension = originalFilename.split('.').pop();
+    const nameWithoutExtension = originalFilename.slice(0, originalFilename.lastIndexOf('.'));
+    return `${nameWithoutExtension}-${timestamp}-${randomString}.${extension}`;
+};
+
+// 5MB file size limit
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+
 const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     const { resolvedTheme } = useTheme();
-    const { edgestore } = useEdgeStore();
+    const params = useParams();
+    const documentId = params.documentId as Id<"documents">;
+    const uploadImage = useAction(api.github.uploadImage);
     const isInitialMount = useRef(true);
 
     const handleUpload = async (file: File) => {
-        const response = await edgestore.publicFiles.upload({
-            file
-        });
+        try {
+            if (file.size > MAX_FILE_SIZE) {
+                throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the 5MB limit.`);
+            }
 
-        return response.url;
+            const base64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result as string;
+                    const base64Data = result.split(',')[1];
+                    resolve(base64Data);
+                };
+                reader.readAsDataURL(file);
+            });
+
+            const uniqueFilename = generateUniqueFilename(file.name);
+
+            await uploadImage({
+                id: documentId,
+                file: base64,
+                filename: uniqueFilename
+            });
+
+            return `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static/images/${uniqueFilename}`;
+        } catch (error) {
+            console.error("Failed to upload image:", error);
+            throw new Error(error instanceof Error ? error.message : "Failed to upload image. Please try again.");
+        }
     }
 
     const editor: BlockNoteEditor = useCreateBlockNote({

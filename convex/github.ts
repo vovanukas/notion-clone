@@ -151,7 +151,7 @@ export const publishPage = action({
 
     ctx.runMutation(api.documents.update, {
       id: args.id,
-      buildStatus: "BUILDING",
+      publishStatus: "PUBLISHING",
     })
 
     await ctx.runAction(api.github.encryptAndPublishSecret, ({
@@ -224,7 +224,7 @@ jobs:
           webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "BUILT" }'
+          data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
 
       - name: Notify on failure
         if: failure()
@@ -233,7 +233,7 @@ jobs:
           webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "ERROR" }'`;
+          data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'`;
     
         await octokit.repos.createOrUpdateFileContents({
           owner: "hugotion", // Replace with your org name

@@ -103,6 +103,7 @@ export const create = mutation ({
             isArchived: false,
             isPublished: false,
             buildStatus: "BUILDING",
+            publishStatus: "UNPUBLISHED",
         });
 
         return document;
@@ -279,6 +280,7 @@ export const update = mutation({
         icon: v.optional(v.string()),
         isPublished: v.optional(v.boolean()),
         buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
+        publishStatus: v.optional(v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR"))),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -372,6 +374,34 @@ export const updateBuildStatus = mutation({
         id: v.id("documents"),
         buildStatus: v.union(v.literal("BUILT"), v.literal("ERROR")),
         websiteUrl: v.optional(v.string()),
+        callbackUserId: v.string(),
+    },
+    handler: async (ctx, args) => {
+
+        const { id, callbackUserId, ...rest } = args;
+
+        const existingDocument = await ctx.db.get(id);
+
+        if (!existingDocument) {
+            throw new Error ("Not found");
+        }
+
+        if (existingDocument.userId !== callbackUserId) {
+            throw new Error ("Unauthorised");
+        }
+
+        const document = await ctx.db.patch(id, {
+            ...rest,
+        });
+
+        return document;
+    }
+});
+
+export const updatePublishStatus = mutation({
+    args: {
+        id: v.id("documents"),
+        publishStatus: v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR")),
         callbackUserId: v.string(),
     },
     handler: async (ctx, args) => {
