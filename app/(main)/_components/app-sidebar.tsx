@@ -15,6 +15,7 @@ import {
   Trash,
   MoreHorizontal,
   Edit,
+  Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -391,6 +392,15 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               onClick={() => {
                 if (params.documentId) {
                   router.push(`/documents/${params.documentId}`);
+                }
+              }}
+            />
+            <Item
+              label="Assets"
+              icon={ImageIcon}
+              onClick={() => {
+                if (params.documentId) {
+                  router.push(`/documents/${params.documentId}/assets`);
                 }
               }}
             />

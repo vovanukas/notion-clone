@@ -47,8 +47,17 @@ export const createRepo = action({
 
       await ctx.runAction(api.github.encryptAndPublishSecret, ({
         id: args.repoName,
-        secret: identity.subject
+        secret: identity.subject,
+        secretName: 'CALLBACK_BEARER'
       }))
+
+      await ctx.runAction(api.github.encryptAndPublishSecret, ({
+        id: args.repoName,
+        secret: process.env.GITHUB_TOKEN!,
+        secretName: 'WORKFLOW_TOKEN'
+      }))
+
+
 
       // Step 2: Add a GitHub Actions workflow to set up Hugo
       const workflowContent = `
@@ -65,7 +74,9 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+      with:
+        token: \${{ secrets.WORKFLOW_TOKEN }}
 
     - name: Configure Git user
       run: |
@@ -103,7 +114,7 @@ jobs:
         webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "buildStatus": "BUILT" }'
+        data: '{ "buildStatus": "BUILT", "publishStatus": "UNPUBLISHED" }'
 
     - name: Notify on failure
       if: failure()
@@ -112,7 +123,7 @@ jobs:
         webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "buildStatus": "ERROR" }'
+        data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'
 `;
 
       // Commit the workflow file to the repository
@@ -156,23 +167,48 @@ export const publishPage = action({
 
     await ctx.runAction(api.github.encryptAndPublishSecret, ({
       id: args.id,
-      secret: identity.subject
+      secret: identity.subject,
+      secretName: 'CALLBACK_BEARER'
     }))
 
     try {
-      await octokit.actions.createWorkflowDispatch({
+      // First try to find any existing deployment workflow files
+      const workflowFiles = await octokit.repos.getContent({
         owner: "hugotion",
         repo: args.id,
-        workflow_id: "hugo-build-deploy.yml",
-        ref: "main",
-      })
-    } catch (error) {
-      if (!(error instanceof Error && error instanceof Object && 'status' in error)) {
-        console.error(error)
-        return
+        path: ".github/workflows"
+      });
+
+      let hasDeployWorkflow = false;
+      if (!Array.isArray(workflowFiles.data)) {
+        throw new Error("Expected directory content");
       }
 
-      if (error.status === 404) {
+      // Check for any workflow file that might handle deployments
+      for (const file of workflowFiles.data) {
+        if (file.type === "file" && 
+            (file.name.includes("deploy") || 
+             file.name.includes("pages") || 
+             file.name.includes("hugo"))) {
+          hasDeployWorkflow = true;
+          // Try to dispatch this workflow
+          try {
+            await octokit.actions.createWorkflowDispatch({
+              owner: "hugotion",
+              repo: args.id,
+              workflow_id: file.name,
+              ref: "main",
+            });
+            return; // Successfully dispatched existing workflow
+          } catch (dispatchError) {
+            console.warn(`Failed to dispatch workflow ${file.name}:`, dispatchError);
+            // Continue checking other files if dispatch fails
+          }
+        }
+      }
+
+      // If no suitable workflow found, create our default one
+      if (!hasDeployWorkflow) {
         const deployWorkflowContent = `
 name: GitHub Pages
 
@@ -209,7 +245,7 @@ jobs:
         run: hugo --minify
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./public
 
@@ -236,11 +272,96 @@ jobs:
           data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'`;
     
         await octokit.repos.createOrUpdateFileContents({
-          owner: "hugotion", // Replace with your org name
-          repo: args.id, // Use the dynamic repo name
+          owner: "hugotion",
+          repo: args.id,
           path: ".github/workflows/hugo-build-deploy.yml",
           message: "Add Hugo setup workflow",
-          content: Buffer.from(deployWorkflowContent).toString("base64"), // Encode to base64
+          content: Buffer.from(deployWorkflowContent).toString("base64"),
+        });
+
+        // Dispatch the newly created workflow
+        await octokit.actions.createWorkflowDispatch({
+          owner: "hugotion",
+          repo: args.id,
+          workflow_id: "hugo-build-deploy.yml",
+          ref: "main",
+        });
+      }
+    } catch (error) {
+      if (!(error instanceof Error && error instanceof Object && 'status' in error)) {
+        console.error(error)
+        return
+      }
+
+      if (error.status === 404) {
+        // Handle case where .github/workflows directory doesn't exist
+        const deployWorkflowContent = `
+name: GitHub Pages
+
+on:
+  push:
+    branches:
+      - main  # Set a branch name to trigger deployment
+  pull_request:
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: \${{ github.workflow }}-\${{ github.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # Fetch Hugo themes (true OR recursive)
+          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.128.0'
+          extended: true
+
+      - name: Build
+        run: hugo --minify
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Notify on success
+        if: success()
+        uses: distributhor/workflow-webhook@v3
+        with:
+          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_auth_type: "bearer"
+          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
+          data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
+
+      - name: Notify on failure
+        if: failure()
+        uses: distributhor/workflow-webhook@v3
+        with:
+          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_auth_type: "bearer"
+          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
+          data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'`;
+        await octokit.repos.createOrUpdateFileContents({
+          owner: "hugotion",
+          repo: args.id,
+          path: ".github/workflows/hugo-build-deploy.yml",
+          message: "Add Hugo setup workflow",
+          content: Buffer.from(deployWorkflowContent).toString("base64"),
         });
       }
     }
@@ -263,6 +384,7 @@ export const encryptAndPublishSecret = action({
   args: { 
     id: v.id("documents"),
     secret: v.string(),
+    secretName: v.string(),
    },
   handler: async (ctx, args) => {
     const publicGithubKey = await octokit.rest.actions.getRepoPublicKey({
@@ -288,7 +410,7 @@ export const encryptAndPublishSecret = action({
     await octokit.rest.actions.createOrUpdateRepoSecret({
       owner: 'hugotion',
       repo: args.id,
-      secret_name: 'CALLBACK_BEARER',
+      secret_name: args.secretName,
       encrypted_value: output,
       key_id: publicGithubKey.data.key_id,
     });
@@ -884,4 +1006,107 @@ export const renamePathInRepo = action({
       throw new Error(error instanceof Error ? error.message : "Failed to rename item in repository.");
     }
   },
+});
+
+export const fetchAssetsTree = action({
+  args: {
+    id: v.id("documents")
+  },
+  handler: async (_, args) => {
+    try {
+      // Step 1: Get the entire tree of the main branch
+      const { data: mainTree } = await octokit.git.getTree({
+        owner: "hugotion",
+        repo: args.id,
+        tree_sha: "main",
+        recursive: "false", // Fetch only the top-level directories
+      });
+
+      // Step 2: Find both static and assets folders
+      const staticFolder = mainTree.tree.find((item: any) =>
+        item.path === "static" && item.type === "tree"
+      );
+      const assetsFolder = mainTree.tree.find((item: any) =>
+        item.path === "assets" && item.type === "tree"
+      );
+
+      // Use a Map to ensure unique entries by path
+      const assetsMap = new Map();
+
+      // Step 3: Fetch the tree for the "static" directory if it exists
+      if (staticFolder && staticFolder.sha) {
+        const { data: staticTree } = await octokit.git.getTree({
+          owner: "hugotion",
+          repo: args.id,
+          tree_sha: staticFolder.sha,
+          recursive: "true",
+        });
+        staticTree.tree.forEach((item: any) => {
+          assetsMap.set(item.path, {
+            ...item,
+            path: `static/${item.path}`
+          });
+        });
+      }
+
+      // Step 4: Fetch the tree for the "assets" directory if it exists
+      if (assetsFolder && assetsFolder.sha) {
+        const { data: assetsTree } = await octokit.git.getTree({
+          owner: "hugotion",
+          repo: args.id,
+          tree_sha: assetsFolder.sha,
+          recursive: "true",
+        });
+        assetsTree.tree.forEach((item: any) => {
+          assetsMap.set(item.path, {
+            ...item,
+            path: `assets/${item.path}`
+          });
+        });
+      }
+
+      // Convert Map back to array
+      return Array.from(assetsMap.values());
+    } catch (error) {
+      console.error("Error fetching GitHub content folder tree:", error);
+      throw new Error("Failed to fetch GitHub content folder tree");
+    }
+  }
+});
+
+export const deleteAsset = action({
+  args: {
+    id: v.id("documents"),
+    filePath: v.string(),
+  },
+  handler: async (_, args) => {
+    try {
+      // First, get the current file to get its SHA
+      const response = await octokit.repos.getContent({
+        owner: "hugotion",
+        repo: args.id,
+        path: args.filePath,
+      });
+
+      if (Array.isArray(response.data)) {
+        throw new Error("Path is a directory, not a file");
+      }
+
+      const sha = response.data.sha;
+
+      // Delete the file
+      await octokit.repos.deleteFile({
+        owner: "hugotion",
+        repo: args.id,
+        path: args.filePath,
+        message: `Delete asset: ${args.filePath}`,
+        sha: sha,
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Failed to delete asset:", error);
+      throw new Error("Failed to delete asset. Please try again.");
+    }
+  }
 });

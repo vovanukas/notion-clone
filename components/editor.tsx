@@ -2,7 +2,16 @@
 
 import "@blocknote/core/fonts/inter.css";
 import { BlockNoteEditor } from "@blocknote/core";
-import { useCreateBlockNote } from "@blocknote/react";
+import {
+    BasicTextStyleButton,
+    BlockTypeSelect,
+    CreateLinkButton,
+    FileCaptionButton,
+    FileReplaceButton,
+    FormattingToolbar,
+    FormattingToolbarController,
+    useCreateBlockNote
+} from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import "@blocknote/mantine/style.css";
 
@@ -95,7 +104,34 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
                 theme={resolvedTheme === "dark" ? "dark" : "light"}
                 editable={editable}
                 onChange={handleEditorChange}
-            />
+                formattingToolbar={false}
+            >
+                <FormattingToolbarController
+                    formattingToolbar={() => (
+                    <FormattingToolbar>
+                        <BlockTypeSelect key={"blockTypeSelect"} />
+
+                        <FileCaptionButton key={"fileCaptionButton"} />
+                        <FileReplaceButton key={"replaceFileButton"} />
+
+                        <BasicTextStyleButton
+                        basicTextStyle={"bold"}
+                        key={"boldStyleButton"}
+                        />
+                        <BasicTextStyleButton
+                        basicTextStyle={"italic"}
+                        key={"italicStyleButton"}
+                        />
+                        <BasicTextStyleButton
+                        basicTextStyle={"strike"}
+                        key={"strikeStyleButton"}
+                        />
+
+                        <CreateLinkButton key={"createLinkButton"} />
+                    </FormattingToolbar>
+                    )}
+                />
+            </BlockNoteView>
         </div>
     );
 }
