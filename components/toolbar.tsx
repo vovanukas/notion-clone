@@ -19,6 +19,42 @@ interface ToolbarProps {
     showIconPicker?: boolean;
 }
 
+// Helper function to detect if there's an image in the metadata
+const hasImageInMetadata = (data: Doc<"documents"> & { [key: string]: any }): boolean => {
+    // Common image key patterns
+    const imageKeys = [
+        'featured_image', 'image', 'cover', 'coverImage', 'cover_image',
+        'thumbnail', 'hero_image', 'banner', 'photo', 'picture'
+    ];
+    
+    // Check for exact key matches
+    for (const key of imageKeys) {
+        if (data[key] && typeof data[key] === 'string' && data[key].trim()) {
+            return true;
+        }
+    }
+    
+    // Check for any key that contains image-like patterns and has a value that looks like an image path
+    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff)$/i;
+    const imagePaths = /\/(images?|assets|media|static|public)\//i;
+    
+    for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'string' && value.trim()) {
+            // Check if the value looks like an image path
+            if (imageExtensions.test(value) || imagePaths.test(value)) {
+                return true;
+            }
+            // Check if the key name suggests it's an image
+            if (key.toLowerCase().includes('image') || key.toLowerCase().includes('cover') || 
+                key.toLowerCase().includes('photo') || key.toLowerCase().includes('picture')) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+};
+
 export const Toolbar = ({
     initialData,
     preview,
@@ -122,7 +158,7 @@ export const Toolbar = ({
                         </Button>
                     </IconPicker>
                 )}
-                {!initialData.featured_image && !preview && (
+                {!hasImageInMetadata(initialData) && !preview && (
                     <Button
                         onClick={coverImage.onOpen}
                         className="text-muted-foreground text-xs"
