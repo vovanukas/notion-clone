@@ -443,12 +443,82 @@ export const fetchAndReturnGithubFileContent = action({
   },
 });
 
+export const fetchAllConfigFiles = action({
+  args: {
+    id: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const configFiles: Array<{
+      content: string;
+      path: string;
+      name: string;
+      isDirectory: boolean;
+    }> = [];
+
+    // First, try to find single config files in the root directory
+    const rootConfigFiles = [
+      "config.toml", "config.yaml", "config.yml", "config.json", 
+      "hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"
+    ];
+
+    for (const configFile of rootConfigFiles) {
+      try {
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: configFile,
+        });
+        if ("content" in response.data && typeof response.data.content === "string") {
+          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
+          configFiles.push({
+            content: base64DecodedContent,
+            path: configFile,
+            name: configFile,
+            isDirectory: false,
+          });
+        }
+      } catch (error: any) {
+        if (error.status !== 404) {
+          console.error(`Failed to fetch ${configFile}:`, error);
+        }
+        // Continue to next file if 404 or other error
+      }
+    }
+
+    // Then, try to find config directory structure
+    try {
+      const configDirResponse = await octokit.repos.getContent({
+        owner: "hugotion",
+        repo: args.id,
+        path: "config",
+      });
+
+      if (Array.isArray(configDirResponse.data)) {
+        // It's a directory, fetch all files recursively
+        const configDirFiles = await fetchConfigDirectoryFiles(args.id, "config", configDirResponse.data);
+        configFiles.push(...configDirFiles);
+      }
+    } catch (error: any) {
+      if (error.status !== 404) {
+        console.error("Failed to fetch config directory:", error);
+      }
+      // Config directory doesn't exist, which is fine
+    }
+
+    if (configFiles.length === 0) {
+      throw new Error("No configuration files found (tried root config files and config directory)");
+    }
+
+    return configFiles;
+  },
+  });
+
 export const fetchConfigFile = action({
   args: {
     id: v.id("documents"),
   },
   handler: async (ctx, args) => {
-    const configFiles = ["config.toml", "config.yaml", "config.yml", "config.json"];
+    const configFiles = ["config.toml", "config.yaml", "config.yml", "config.json", "hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"];
     for (const configFile of configFiles) {
       try {
         const response = await octokit.repos.getContent({
@@ -507,6 +577,112 @@ export const parseAndSaveSettingsObject = action({
     } else {
       throw new Error("The path is not a file or does not exist.");
     }
+  }
+});
+
+// Helper function to recursively fetch files from config directory
+async function fetchConfigDirectoryFiles(repoId: string, dirPath: string, dirContents: any[]): Promise<Array<{
+  content: string;
+  path: string;
+  name: string;
+  isDirectory: boolean;
+}>> {
+  const files: Array<{
+    content: string;
+    path: string;
+    name: string;
+    isDirectory: boolean;
+  }> = [];
+
+  for (const item of dirContents) {
+    if (item.type === "file" && (
+      item.name.endsWith(".toml") || 
+      item.name.endsWith(".yaml") || 
+      item.name.endsWith(".yml") || 
+      item.name.endsWith(".json")
+    )) {
+      try {
+        const response = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: repoId,
+          path: item.path,
+        });
+        if ("content" in response.data && typeof response.data.content === "string") {
+          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
+          files.push({
+            content: base64DecodedContent,
+            path: item.path,
+            name: item.name,
+            isDirectory: true,
+          });
+        }
+      } catch (error: any) {
+        console.error(`Failed to fetch config file ${item.path}:`, error);
+      }
+    } else if (item.type === "dir") {
+      // Recursively fetch from subdirectories
+      try {
+        const subDirResponse = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: repoId,
+          path: item.path,
+        });
+        if (Array.isArray(subDirResponse.data)) {
+          const subDirFiles = await fetchConfigDirectoryFiles(repoId, item.path, subDirResponse.data);
+          files.push(...subDirFiles);
+        }
+      } catch (error: any) {
+        console.error(`Failed to fetch config subdirectory ${item.path}:`, error);
+      }
+    }
+  }
+
+  return files;
+}
+
+export const parseAndSaveMultipleConfigFiles = action({
+  args: {
+    id: v.id("documents"),
+    configFiles: v.array(v.object({
+      content: v.string(),
+      path: v.string(),
+      name: v.string(),
+      isDirectory: v.boolean(),
+    })),
+  },
+  handler: async (_, args) => {
+    const results = [];
+    
+    for (const configFile of args.configFiles) {
+      try {
+        const contentResponse = await octokit.repos.getContent({
+          owner: "hugotion",
+          repo: args.id,
+          path: configFile.path,
+        });
+
+        if (!Array.isArray(contentResponse.data) && contentResponse.data.type === 'file') {
+          const { sha } = contentResponse.data;
+
+          await octokit.repos.createOrUpdateFileContents({
+            owner: "hugotion",
+            repo: args.id,
+            path: configFile.path,
+            message: `Changed config settings in ${configFile.path}`,
+            content: Buffer.from(configFile.content).toString("base64"),
+            sha,
+          });
+
+          results.push({ success: true, path: configFile.path });
+        } else {
+          results.push({ success: false, path: configFile.path, error: "The path is not a file or does not exist." });
+        }
+      } catch (error: any) {
+        results.push({ success: false, path: configFile.path, error: error.message });
+      }
+    }
+
+    return results;
   }
 });
 
