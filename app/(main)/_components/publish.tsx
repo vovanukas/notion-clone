@@ -103,7 +103,7 @@ export const Publish = ({initialData}: PublishProps) => {
                         disabled={isSubmitting}
                         onClick={onPublish}
                     >
-                        Push changes
+                        Re-publish
                     </Button>
                 </div>
             );

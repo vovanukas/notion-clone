@@ -3,13 +3,17 @@
 import { create } from "zustand";
 import { FileContent } from "@/types/hugo";
 
-type ChangedFile = FileContent & { [key: string]: any };
+type ChangedFile = FileContent & { 
+  [key: string]: any;
+  sha?: string; // Keep SHA separate from frontmatter
+};
 
 type UnsavedChangesStore = {
   changedFiles: ChangedFile[];
   updateFile: (path: string, updates: Partial<Omit<ChangedFile, 'path'>>) => void;
   resetChangedFiles: () => void;
   hasUnsavedChanges: () => boolean;
+  getFileChanges: (path: string) => ChangedFile | undefined;
 };
 
 export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
@@ -56,4 +60,9 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
   },
   
   hasUnsavedChanges: () => get().changedFiles.length > 0,
+  
+  getFileChanges: (path: string) => {
+    const decodedPath = decodeURIComponent(path);
+    return get().changedFiles.find(file => file.path === decodedPath);
+  },
 }));

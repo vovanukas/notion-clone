@@ -7,7 +7,6 @@ import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
 import matter from "gray-matter";
 
-
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -36,7 +35,7 @@ export const createRepo = action({
     try {
       // Step 1: Create a new repository in the organization
       const response = await octokit.repos.createInOrg({
-        org: "hugotion", // Replace with your org name
+        org: "hugotion",
         name: args.repoName,
         private: false,
         description: "Hugo site repository",
@@ -187,9 +186,7 @@ export const publishPage = action({
       // Check for any workflow file that might handle deployments
       for (const file of workflowFiles.data) {
         if (file.type === "file" && 
-            (file.name.includes("deploy") || 
-             file.name.includes("pages") || 
-             file.name.includes("hugo"))) {
+            file.name.includes("deploy")) {
           hasDeployWorkflow = true;
           // Try to dispatch this workflow
           try {
@@ -216,7 +213,7 @@ on:
   push:
     branches:
       - main  # Set a branch name to trigger deployment
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -269,22 +266,14 @@ jobs:
           webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'`;
+          data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
     
         await octokit.repos.createOrUpdateFileContents({
           owner: "hugotion",
           repo: args.id,
-          path: ".github/workflows/hugo-build-deploy.yml",
+          path: ".github/workflows/deploy.yml",
           message: "Add Hugo setup workflow",
           content: Buffer.from(deployWorkflowContent).toString("base64"),
-        });
-
-        // Dispatch the newly created workflow
-        await octokit.actions.createWorkflowDispatch({
-          owner: "hugotion",
-          repo: args.id,
-          workflow_id: "hugo-build-deploy.yml",
-          ref: "main",
         });
       }
     } catch (error) {
@@ -302,7 +291,7 @@ on:
   push:
     branches:
       - main  # Set a branch name to trigger deployment
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -355,16 +344,30 @@ jobs:
           webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'`;
+          data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
         await octokit.repos.createOrUpdateFileContents({
           owner: "hugotion",
           repo: args.id,
-          path: ".github/workflows/hugo-build-deploy.yml",
+          path: ".github/workflows/deploy.yml",
           message: "Add Hugo setup workflow",
           content: Buffer.from(deployWorkflowContent).toString("base64"),
         });
       }
     }
+  },
+});
+
+export const dispatchDeployWorkflow = action({
+  args: {
+    id: v.id("documents"),
+  },
+  handler: async (_, args) => {
+    await octokit.actions.createWorkflowDispatch({
+      owner: "hugotion",
+      repo: args.id,
+      workflow_id: "deploy.yml",
+      ref: "main",
+    });
   },
 });
 
@@ -730,40 +733,90 @@ export const updateFileContent = action({
     filesToUpdate: v.any(),
   },
   handler: async (_, args) => {
-    for (const file of args.filesToUpdate) {
-      const { content, path, ...metadata } = file;
-      try {
-        // Get the current file content to preserve the SHA
-        const response = await octokit.repos.getContent({
-          owner: "hugotion",
-          repo: args.id,
-          path: `content/${path}`,
-        });
+    if (args.filesToUpdate.length === 0) {
+      throw new Error("No files to update");
+    }
 
-        if (Array.isArray(response.data)) {
-          throw new Error("Path is a directory, not a file");
-        }
+    try {
+      // Get the current commit SHA and tree SHA
+      const { data: ref } = await octokit.git.getRef({
+        owner: "hugotion",
+        repo: args.id,
+        ref: "heads/main",
+      });
 
-        if (!('sha' in response.data)) {
-          throw new Error("File not found or invalid");
-        }
+      const currentCommitSha = ref.object.sha;
+      const { data: currentCommit } = await octokit.git.getCommit({
+        owner: "hugotion",
+        repo: args.id,
+        commit_sha: currentCommitSha,
+      });
 
-        // Create the frontmatter string
+      const currentTreeSha = currentCommit.tree.sha;
+
+      // Prepare tree changes
+      const treeChanges: Array<{
+        path: string;
+        mode: "100644" | "100755" | "040000" | "160000" | "120000";
+        type: "blob" | "tree" | "commit";
+        content: string;
+      }> = [];
+      const changedFileNames = [];
+
+      for (const file of args.filesToUpdate) {
+        const { content, path, sha, ...metadata } = file;  // Extract sha separately
+
+        // Clean up the file name for the commit message
+        const fileName = path.replace(/\.md$/, '').replace(/\//g, ', ').replace(/_/g, ' ');
+        changedFileNames.push(fileName);
+
+        // Create the frontmatter string (without sha)
         const frontmatter = matter.stringify(content, metadata);
 
-        // Update the file with the new content
-        await octokit.repos.createOrUpdateFileContents({
-          owner: "hugotion",
-          repo: args.id,
+        // Add to tree changes
+        treeChanges.push({
           path: `content/${path}`,
-          message: `Updated content of: ${path}`,
-          content: Buffer.from(frontmatter).toString("base64"),
-          sha: response.data.sha
+          mode: "100644" as const,
+          type: "blob" as const,
+          content: frontmatter,
         });
-      } catch (error) {
-        console.error(`Failed to update file ${path}:`, error);
-        throw error;
       }
+
+      // Create new tree with all changes
+      const { data: newTree } = await octokit.git.createTree({
+        owner: "hugotion",
+        repo: args.id,
+        base_tree: currentTreeSha,
+        tree: treeChanges,
+      });
+
+      // Generate commit message
+      const commitMessage = changedFileNames.length === 1
+        ? `Updated ${changedFileNames[0]}`
+        : `Updated ${changedFileNames.slice(0, -1).join(', ')} and ${changedFileNames[changedFileNames.length - 1]}`;
+
+      // Create new commit
+      const { data: newCommit } = await octokit.git.createCommit({
+        owner: "hugotion",
+        repo: args.id,
+        message: commitMessage,
+        tree: newTree.sha,
+        parents: [currentCommitSha],
+      });
+
+      // Update the main branch reference
+      await octokit.git.updateRef({
+        owner: "hugotion",
+        repo: args.id,
+        ref: "heads/main",
+        sha: newCommit.sha,
+      });
+
+      console.log(`Successfully updated ${args.filesToUpdate.length} files in a single commit: ${commitMessage}`);
+
+    } catch (error) {
+      console.error("Failed to update files:", error);
+      throw new Error("Failed to update files. Please try again.");
     }
   }
 });

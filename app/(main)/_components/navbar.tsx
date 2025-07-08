@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useEffect, useState } from "react";
 
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -23,14 +24,22 @@ export const Navbar = () => {
   const params = useParams();
   const router = useRouter();
   const documentId = params.documentId as Id<"documents">;
-  const { changedFiles } = useUnsavedChanges();
+  const { changedFiles, resetChangedFiles } = useUnsavedChanges();
   const { toggleSidebar } = useSidebar();
-  const { resetChangedFiles } = useUnsavedChanges();
+  const [previousDocumentId, setPreviousDocumentId] = useState<string | null>(null);
 
   const document = useQuery(
     api.documents.getById,
     !!params.documentId  ? { documentId: documentId } : "skip",
   )
+
+  // Reset unsaved changes only when switching between different websites (different documentIds)
+  useEffect(() => {
+    if (previousDocumentId && previousDocumentId !== documentId) {
+      resetChangedFiles();
+    }
+    setPreviousDocumentId(documentId);
+  }, [documentId, resetChangedFiles, previousDocumentId]);
 
   const saveChanges = async () => {
     const promise = saveContent({

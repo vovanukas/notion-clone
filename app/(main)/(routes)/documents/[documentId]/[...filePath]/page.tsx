@@ -32,8 +32,9 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [metadata, setMetadata] = useState<{ [key: string]: any } | null>(null);
+    const [previousDocumentId, setPreviousDocumentId] = useState<string | null>(null);
 
-    const { updateFile } = useUnsavedChanges();
+    const { updateFile, resetChangedFiles, getFileChanges } = useUnsavedChanges();
     const { getNodeByPath } = useAppSidebar();
     const currentFileNode = useMemo(() => getNodeByPath(filePathString), [filePathString, getNodeByPath]);
 
@@ -44,6 +45,14 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const update = useMutation(api.documents.update);
     const Editor = useMemo(() => dynamic(() => import("@/components/editor"), { ssr: false }), []);
     const editor = useCreateBlockNote();
+
+    // Reset unsaved changes only when switching between different websites (different documentIds)
+    useEffect(() => {
+        if (previousDocumentId && previousDocumentId !== documentId) {
+            resetChangedFiles();
+        }
+        setPreviousDocumentId(documentId);
+    }, [documentId, resetChangedFiles, previousDocumentId]);
 
     useEffect(() => {
         if (!loading && metadata) {
@@ -57,9 +66,23 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
 
     const loadContent = useCallback(async () => {
         if (!documentId || !filePath) return;
+        
+        const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+        const decodedPath = decodeURIComponent(filePathString);
+        
+        // Check if there are existing unsaved changes for this file
+        const existingChanges = getFileChanges(decodedPath);
+        
+        if (existingChanges) {
+            // Use existing unsaved changes
+            setContent(existingChanges.content || "");
+            setMetadata(existingChanges as { [key: string]: any });
+            setLoading(false);
+            return;
+        }
+        
+        // No existing changes, load from server
         try {
-            const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
-            const decodedPath = decodeURIComponent(filePathString);
             const fileContent = await fetchFileContent({
                 id: documentId,
                 path: `content/${decodedPath}`,
@@ -72,7 +95,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         } finally {
             setLoading(false);
         }
-    }, [documentId, filePath, fetchFileContent]);
+    }, [documentId, filePath, fetchFileContent, getFileChanges]);
 
     useEffect(() => {
         loadContent();
