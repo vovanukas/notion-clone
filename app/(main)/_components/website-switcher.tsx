@@ -9,7 +9,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -77,7 +76,7 @@ export const WebsiteSwitcher = () => {
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Websites
             </DropdownMenuLabel>
-            {documents?.map((document, index) => (
+            {documents?.map((document) => (
               <DropdownMenuItem
                 key={document._id}
                 title={document.title}

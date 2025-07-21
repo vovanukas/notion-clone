@@ -45,14 +45,6 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const getFileIcon = (path: string) => {
-  const extension = path.split('.').pop()?.toLowerCase();
-  if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension || '')) {
-    return ImageIcon;
-  }
-  return File;
-};
-
 export default function AssetsPage() {
   const params = useParams();
   const documentId = params.documentId as Id<"documents">;
@@ -178,7 +170,7 @@ export default function AssetsPage() {
         <div>
           <h1 className="text-2xl font-bold">Assets</h1>
           <p className="text-muted-foreground">
-            Manage your website's media files and assets
+            Manage your website&apos;s media files and assets
           </p>
         </div>
       </div>
@@ -200,7 +192,6 @@ export default function AssetsPage() {
               onaddfile={handleUpload}
               acceptedFileTypes={['image/*', 'application/pdf', 'text/*']}
               maxFiles={1}
-              maxFileSize="5MB"
               labelIdle='Drag & Drop files here or <span class="filepond--label-action">Browse</span><br /><span class="text-sm text-muted-foreground">Max file size: 5MB</span>'
             />
             <div className="h-6" /> {/* Spacer for PQINA attribution */}

@@ -130,7 +130,7 @@ const TreeView = React.forwardRef<HTMLDivElement, TreeProps>(
                 />
                 <div
                     className='w-full h-[48px]'
-                    onDrop={(e) => { handleDrop({id: '', name: 'parent_div'})}}>
+                    onDrop={() => { handleDrop({id: '', name: 'parent_div'})}}>
 
                 </div>
             </div>
@@ -289,7 +289,7 @@ const TreeNode = ({
                         default={defaultNodeIcon}
                     />
                     <span className="text-sm truncate">{item.name}</span>
-                    <TreeActions isSelected={selectedItemId === item.id}>
+                    <TreeActions>
                         {item.actions}
                     </TreeActions>
                 </AccordionTrigger>
@@ -392,7 +392,7 @@ const TreeLeaf = React.forwardRef<
                     default={defaultLeafIcon}
                 />
                 <span className="flex-grow text-sm truncate">{item.name}</span>
-                <TreeActions isSelected={selectedItemId === item.id}>
+                <TreeActions>
                     {item.actions}
                 </TreeActions>
             </div>
@@ -466,10 +466,8 @@ const TreeIcon = ({
 
 const TreeActions = ({
     children,
-    isSelected
 }: {
     children: React.ReactNode
-    isSelected: boolean
 }) => {
     return (
         <div

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Trash, UploadCloudIcon } from "lucide-react";
+import { MoreHorizontal, Trash } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface MenuProps {
