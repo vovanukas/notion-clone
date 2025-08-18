@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { useCoverImage } from "@/hooks/use-cover-image";
-// import { SingleImageDropzone } from "@/components/single-image-dropzone";
 import { FilePond, registerPlugin } from "react-filepond";
 import { FilePondFile, FilePondErrorDescription } from 'filepond';
 import FilePondPluginFileEncode from 'filepond-plugin-file-encode';
