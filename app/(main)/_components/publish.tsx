@@ -22,6 +22,7 @@ interface PublishProps {
 
 export const Publish = ({initialData}: PublishProps) => {
     const publishGithubPage = useAction(api.github.publishPage);
+    const unpublishGithubPage = useAction(api.github.unpublishPage);
 
     const [copied, setCopied] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,6 +40,20 @@ export const Publish = ({initialData}: PublishProps) => {
                     loading: "Preparing to launch...",
                     success: "We are launching your website!",
                     error: "Failed to launch."
+                })
+    }
+
+    const onUnpublish = async () => {
+        setIsSubmitting(true);
+        const promise = unpublishGithubPage({
+            id: initialData._id,
+        })
+        .finally(() => setIsSubmitting(false));
+
+        toast.promise(promise, {
+                    loading: "Unpublishing website...",
+                    success: "Website unpublished successfully!",
+                    error: "Failed to unpublish."
                 })
     }
 
@@ -101,9 +116,10 @@ export const Publish = ({initialData}: PublishProps) => {
                         size="sm"
                         className="w-full text-xs"
                         disabled={isSubmitting}
-                        onClick={onPublish}
+                        onClick={onUnpublish}
+                        variant="destructive"
                     >
-                        Re-publish
+                        Unpublish
                     </Button>
                 </div>
             );

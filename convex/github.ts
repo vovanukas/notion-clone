@@ -170,6 +170,27 @@ export const publishPage = action({
       secretName: 'CALLBACK_BEARER'
     }))
 
+    // Check if GitHub Pages is enabled, and enable it if not
+    try {
+      await octokit.repos.getPages({
+        owner: "hugotion",
+        repo: args.id
+      });
+    } catch (error: any) {
+      if (error.status === 404) {
+        // GitHub Pages is not enabled, so enable it
+        console.log("GitHub Pages not enabled, enabling it...");
+        await octokit.repos.createPagesSite({
+          owner: "hugotion",
+          repo: args.id,
+          build_type: "workflow",
+        });
+      } else {
+        // Some other error occurred
+        throw error;
+      }
+    }
+
     try {
       // First try to find any existing deployment workflow files
       const workflowFiles = await octokit.repos.getContent({
@@ -353,6 +374,52 @@ jobs:
           content: Buffer.from(deployWorkflowContent).toString("base64"),
         });
       }
+    }
+  },
+});
+
+export const unpublishPage = action({
+  args: {
+    id: v.id("documents"),
+   },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (!identity) {
+        throw new Error ("Unauthenticated");
+    }
+
+    try {
+      // Update document status to unpublishing
+      await ctx.runMutation(api.documents.update, {
+        id: args.id,
+        publishStatus: "PUBLISHING", // Use PUBLISHING as a temporary status during unpublish
+      });
+
+      // Delete the GitHub Pages site using the official API endpoint
+      await octokit.repos.deletePagesSite({
+        owner: "hugotion",
+        repo: args.id,
+      });
+
+      // Update document status to unpublished after successful deletion
+      await ctx.runMutation(api.documents.update, {
+        id: args.id,
+        publishStatus: "UNPUBLISHED",
+        websiteUrl: undefined, // Clear the website URL since it's no longer accessible
+      });
+
+      return true;
+    } catch (error) {
+      console.error("Error unpublishing page:", error);
+
+      // Update status to error if unpublishing fails
+      await ctx.runMutation(api.documents.update, {
+        id: args.id,
+        publishStatus: "ERROR",
+      });
+
+      throw new Error("Failed to unpublish page");
     }
   },
 });

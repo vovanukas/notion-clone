@@ -110,7 +110,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const onTitleChange = useCallback((value: string) => {
         const newTitle = value;
         setMetadata(prev => ({ ...prev, title: newTitle }));
-    }, [document, update]);
+    }, []);
 
     if (document === undefined || loading) {
         return (
