@@ -42,7 +42,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         documentId: documentId,
     }), [documentId]));
 
-    const update = useMutation(api.documents.update);
     const Editor = useMemo(() => dynamic(() => import("@/components/editor"), { ssr: false }), []);
     const editor = useCreateBlockNote();
 
