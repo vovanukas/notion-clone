@@ -151,7 +151,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         );
     }
 
-    const coverImageUrl = `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static/${metadata?.featured_image}`;
+    const coverImageUrl = `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/${metadata?.featured_image}`;
 
     return (
         <div className="pb-40">

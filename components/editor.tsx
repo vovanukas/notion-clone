@@ -70,7 +70,7 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
                 filename: uniqueFilename
             });
 
-            return `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/static/images/${uniqueFilename}`;
+            return `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/images/${uniqueFilename}`;
         } catch (error) {
             console.error("Failed to upload image:", error);
             throw new Error(error instanceof Error ? error.message : "Failed to upload image. Please try again.");

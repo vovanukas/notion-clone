@@ -3,12 +3,33 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { Octokit } from "@octokit/rest";
+import { createAppAuth } from "@octokit/auth-app";
 import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
 import matter from "gray-matter";
+import { createClerkClient } from "@clerk/backend";
+
+const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
+
+function getPrivateKey() {
+  const base64Key = process.env.GITHUB_PRIVATE_KEY_BASE64;
+  if (!base64Key) {
+    throw new Error("GitHub private key not found in environment");
+  }
+  try {
+    return Buffer.from(base64Key, 'base64').toString('utf8');
+  } catch (error) {
+    throw new Error("Failed to decode GitHub private key");
+  }
+}
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
+  authStrategy: createAppAuth,
+  auth: {
+    appId: process.env.GITHUB_APP_ID!,
+    privateKey: getPrivateKey(),
+    installationId: process.env.GITHUB_INSTALLATION_ID!,
+  }
 });
 
 export const createRepo = action({
@@ -18,9 +39,17 @@ export const createRepo = action({
     siteTemplate: v.string(),
    },
   handler: async (ctx, args) => {
+    const { data } = await octokit.request("/app");
+    console.log("Data:", data);
+
     console.log("Creating repo...");
     console.log("Site Name:", args.siteName);
     const identity = await ctx.auth.getUserIdentity();
+    const user = await clerkClient.users.getUser(identity?.subject!)
+    const token = await clerkClient.users.getUserOauthAccessToken(user.id, "github")
+
+    console.log("User:", user);
+    console.log("Token:", token);
 
     if (!identity) {
       throw new Error ("Unauthenticated");
@@ -35,7 +64,7 @@ export const createRepo = action({
     try {
       // Step 1: Create a new repository in the organization
       const response = await octokit.repos.createInOrg({
-        org: "hugotion",
+        org: "hugity",
         name: args.repoName,
         private: false,
         description: "Hugo site repository",
@@ -104,7 +133,7 @@ jobs:
       run: |
         git add .
         git commit -m "Initial setup with ${args.siteTemplate} site"
-        git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugotion/\${{ github.event.repository.name }}.git main
+        git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugity/\${{ github.event.repository.name }}.git main
 
     - name: Notify on success
       if: success()
@@ -127,7 +156,7 @@ jobs:
 
       // Commit the workflow file to the repository
       await octokit.repos.createOrUpdateFileContents({
-        owner: "hugotion", // Replace with your org name
+        owner: "hugity", // Replace with your org name
         repo: args.repoName, // Use the dynamic repo name
         path: ".github/workflows/hugo-setup.yml",
         message: "Add Hugo setup workflow",
@@ -135,7 +164,7 @@ jobs:
       });
 
       await octokit.repos.createPagesSite({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.repoName,
         build_type: "workflow",
       })
@@ -173,7 +202,7 @@ export const publishPage = action({
     // Check if GitHub Pages is enabled, and enable it if not
     try {
       await octokit.repos.getPages({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id
       });
     } catch (error: any) {
@@ -181,7 +210,7 @@ export const publishPage = action({
         // GitHub Pages is not enabled, so enable it
         console.log("GitHub Pages not enabled, enabling it...");
         await octokit.repos.createPagesSite({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           build_type: "workflow",
         });
@@ -194,7 +223,7 @@ export const publishPage = action({
     try {
       // First try to find any existing deployment workflow files
       const workflowFiles = await octokit.repos.getContent({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: ".github/workflows"
       });
@@ -212,7 +241,7 @@ export const publishPage = action({
           // Try to dispatch this workflow
           try {
             await octokit.actions.createWorkflowDispatch({
-              owner: "hugotion",
+              owner: "hugity",
               repo: args.id,
               workflow_id: file.name,
               ref: "main",
@@ -290,7 +319,7 @@ jobs:
           data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
     
         await octokit.repos.createOrUpdateFileContents({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: ".github/workflows/deploy.yml",
           message: "Add Hugo setup workflow",
@@ -367,7 +396,7 @@ jobs:
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
           data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
         await octokit.repos.createOrUpdateFileContents({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: ".github/workflows/deploy.yml",
           message: "Add Hugo setup workflow",
@@ -398,7 +427,7 @@ export const unpublishPage = action({
 
       // Delete the GitHub Pages site using the official API endpoint
       await octokit.repos.deletePagesSite({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
       });
 
@@ -430,7 +459,7 @@ export const dispatchDeployWorkflow = action({
   },
   handler: async (_, args) => {
     await octokit.actions.createWorkflowDispatch({
-      owner: "hugotion",
+      owner: "hugity",
       repo: args.id,
       workflow_id: "deploy.yml",
       ref: "main",
@@ -442,7 +471,7 @@ export const getPagesUrl = action({
   args: { id:v.id("documents") },
   handler: async (_, args) => {
     const pagesInformation = await octokit.repos.getPages({
-      owner: "hugotion",
+      owner: "hugity",
       repo: args.id
     })
     
@@ -458,7 +487,7 @@ export const encryptAndPublishSecret = action({
    },
   handler: async (ctx, args) => {
     const publicGithubKey = await octokit.rest.actions.getRepoPublicKey({
-      owner: 'hugotion',
+      owner: 'hugity',
       repo: args.id,
     });
 
@@ -478,7 +507,7 @@ export const encryptAndPublishSecret = action({
     });
 
     await octokit.rest.actions.createOrUpdateRepoSecret({
-      owner: 'hugotion',
+      owner: 'hugity',
       repo: args.id,
       secret_name: args.secretName,
       encrypted_value: output,
@@ -495,7 +524,7 @@ export const fetchAndReturnGithubFileContent = action({
   handler: async (ctx, args) => {
     try {
       const response = await octokit.repos.getContent({
-        owner: 'hugotion',
+        owner: 'hugity',
         repo: args.id,
         path: args.path,
       });
@@ -534,7 +563,7 @@ export const fetchAllConfigFiles = action({
     for (const configFile of rootConfigFiles) {
       try {
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: configFile,
         });
@@ -558,7 +587,7 @@ export const fetchAllConfigFiles = action({
     // Then, try to find config directory structure
     try {
       const configDirResponse = await octokit.repos.getContent({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: "config",
       });
@@ -592,7 +621,7 @@ export const fetchConfigFile = action({
     for (const configFile of configFiles) {
       try {
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: configFile,
         });
@@ -626,7 +655,7 @@ export const parseAndSaveSettingsObject = action({
   },
   handler: async (_, args) => {
     const contentResponse = await octokit.repos.getContent({
-      owner: "hugotion",
+      owner: "hugity",
       repo: args.id,
       path: args.configPath, // Use dynamic configPath
     });
@@ -637,7 +666,7 @@ export const parseAndSaveSettingsObject = action({
       const updatedConfig = args.newSettings;
 
       await octokit.repos.createOrUpdateFileContents({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: args.configPath, // Use dynamic configPath
         message: `Changed config settings in ${args.configPath}`,
@@ -673,7 +702,7 @@ async function fetchConfigDirectoryFiles(repoId: string, dirPath: string, dirCon
     )) {
       try {
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: repoId,
           path: item.path,
         });
@@ -693,7 +722,7 @@ async function fetchConfigDirectoryFiles(repoId: string, dirPath: string, dirCon
       // Recursively fetch from subdirectories
       try {
         const subDirResponse = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: repoId,
           path: item.path,
         });
@@ -726,7 +755,7 @@ export const parseAndSaveMultipleConfigFiles = action({
     for (const configFile of args.configFiles) {
       try {
         const contentResponse = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: configFile.path,
         });
@@ -735,7 +764,7 @@ export const parseAndSaveMultipleConfigFiles = action({
           const { sha } = contentResponse.data;
 
           await octokit.repos.createOrUpdateFileContents({
-            owner: "hugotion",
+            owner: "hugity",
             repo: args.id,
             path: configFile.path,
             message: `Changed config settings in ${configFile.path}`,
@@ -764,7 +793,7 @@ export const fetchGitHubFileTree = action({
     try {
       // Step 1: Get the entire tree of the main branch
       const { data: mainTree } = await octokit.git.getTree({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         tree_sha: "main",
         recursive: "false", // Fetch only the top-level directories
@@ -781,7 +810,7 @@ export const fetchGitHubFileTree = action({
 
       // Step 3: Fetch the tree for the "content" directory using the SHA
       const { data: contentTree } = await octokit.git.getTree({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         tree_sha: contentFolder.sha,
         recursive: "true", // Now we fetch inside the content folder
@@ -807,14 +836,14 @@ export const updateFileContent = action({
     try {
       // Get the current commit SHA and tree SHA
       const { data: ref } = await octokit.git.getRef({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         ref: "heads/main",
       });
 
       const currentCommitSha = ref.object.sha;
       const { data: currentCommit } = await octokit.git.getCommit({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         commit_sha: currentCommitSha,
       });
@@ -851,7 +880,7 @@ export const updateFileContent = action({
 
       // Create new tree with all changes
       const { data: newTree } = await octokit.git.createTree({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         base_tree: currentTreeSha,
         tree: treeChanges,
@@ -864,7 +893,7 @@ export const updateFileContent = action({
 
       // Create new commit
       const { data: newCommit } = await octokit.git.createCommit({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         message: commitMessage,
         tree: newTree.sha,
@@ -873,7 +902,7 @@ export const updateFileContent = action({
 
       // Update the main branch reference
       await octokit.git.updateRef({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         ref: "heads/main",
         sha: newCommit.sha,
@@ -897,7 +926,7 @@ export const uploadImage = action({
   handler: async (_, args) => {
     try {
       const response = await octokit.repos.createOrUpdateFileContents({
-        owner: 'hugotion',
+        owner: 'hugity',
         repo: args.id,
         path: `static/images/${args.filename}`,
         message: 'Uploaded image',
@@ -919,7 +948,7 @@ export const deleteRepo = action({
   handler: async (_, args) => {
     try {
       await octokit.repos.delete({
-        owner: 'hugotion',
+        owner: 'hugity',
         repo: args.id,
       });
     } catch (error) {
@@ -944,7 +973,7 @@ export const deleteImage = action({
       try {
         // Get the current file content to preserve the SHA
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: `static/${args.imagePath}`,
         });
@@ -962,7 +991,7 @@ export const deleteImage = action({
 
         // Delete the file
         const deleteResponse = await octokit.repos.deleteFile({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: `static/${args.imagePath}`,
           message: "Deleted image",
@@ -1006,7 +1035,7 @@ export const createMarkdownFileInRepo = action({
       let sha: string | undefined = undefined;
       try {
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: decodedPath,
         });
@@ -1019,7 +1048,7 @@ export const createMarkdownFileInRepo = action({
       }
 
       await octokit.repos.createOrUpdateFileContents({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: decodedPath,
         message: `Create file: ${decodedPath}`,
@@ -1046,7 +1075,7 @@ export const deleteFile = action({
       let contentData;
       try {
         const response = await octokit.repos.getContent({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           path: currentPath,
         });
@@ -1087,7 +1116,7 @@ export const deleteFile = action({
         }
         try {
           await octokit.repos.deleteFile({
-            owner: "hugotion",
+            owner: "hugity",
             repo: args.id,
             path: currentPath,
             message: `Delete file: ${currentPath}`,
@@ -1149,7 +1178,7 @@ export const renamePathInRepo = action({
     itemType: v.union(v.literal("file"), v.literal("folder")),
   },
   handler: async (ctx, args) => {
-    const owner = "hugotion";
+    const owner = "hugity";
     const repo = args.id;
 
     console.log(`[renamePathInRepo] Starting rename for repo '${repo}': '${args.oldPath}' to '${args.newPath}' (type: ${args.itemType})`);
@@ -1312,7 +1341,7 @@ export const fetchAssetsTree = action({
     try {
       // Step 1: Get the entire tree of the main branch
       const { data: mainTree } = await octokit.git.getTree({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         tree_sha: "main",
         recursive: "false", // Fetch only the top-level directories
@@ -1332,7 +1361,7 @@ export const fetchAssetsTree = action({
       // Step 3: Fetch the tree for the "static" directory if it exists
       if (staticFolder && staticFolder.sha) {
         const { data: staticTree } = await octokit.git.getTree({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           tree_sha: staticFolder.sha,
           recursive: "true",
@@ -1348,7 +1377,7 @@ export const fetchAssetsTree = action({
       // Step 4: Fetch the tree for the "assets" directory if it exists
       if (assetsFolder && assetsFolder.sha) {
         const { data: assetsTree } = await octokit.git.getTree({
-          owner: "hugotion",
+          owner: "hugity",
           repo: args.id,
           tree_sha: assetsFolder.sha,
           recursive: "true",
@@ -1379,7 +1408,7 @@ export const deleteAsset = action({
     try {
       // First, get the current file to get its SHA
       const response = await octokit.repos.getContent({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: args.filePath,
       });
@@ -1392,7 +1421,7 @@ export const deleteAsset = action({
 
       // Delete the file
       await octokit.repos.deleteFile({
-        owner: "hugotion",
+        owner: "hugity",
         repo: args.id,
         path: args.filePath,
         message: `Delete asset: ${args.filePath}`,

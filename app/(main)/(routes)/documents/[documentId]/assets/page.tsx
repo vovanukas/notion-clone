@@ -231,7 +231,7 @@ export default function AssetsPage() {
                     const extension = asset.path.split('.').pop()?.toLowerCase();
                     const isImage = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(extension || '');
                     const imageUrl = isImage 
-                      ? `https://raw.githubusercontent.com/hugotion/${documentId}/refs/heads/main/${asset.path}`
+                      ? `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/${asset.path}`
                       : null;
                     return (
                       <TableRow key={`${asset.path}-${asset.sha}`}>
