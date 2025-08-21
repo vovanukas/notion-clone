@@ -848,38 +848,65 @@ export const parseAndSaveMultipleConfigFiles = action({
   handler: async (ctx, args) => {
     const octokit = await getUserOctokit(ctx);
 
-    const results = [];
-    
-    for (const configFile of args.configFiles) {
-      try {
-        const contentResponse = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
-          path: configFile.path,
-        });
+    try {
+      // Get the current commit SHA and tree SHA
+      const { data: ref } = await octokit.git.getRef({
+        owner: "hugity",
+        repo: args.id,
+        ref: "heads/main",
+      });
 
-        if (!Array.isArray(contentResponse.data) && contentResponse.data.type === 'file') {
-          const { sha } = contentResponse.data;
+      const currentCommitSha = ref.object.sha;
+      const { data: currentCommit } = await octokit.git.getCommit({
+        owner: "hugity",
+        repo: args.id,
+        commit_sha: currentCommitSha,
+      });
 
-          await octokit.repos.createOrUpdateFileContents({
-            owner: "hugity",
-            repo: args.id,
-            path: configFile.path,
-            message: `Changed config settings in ${configFile.path}`,
-            content: Buffer.from(configFile.content).toString("base64"),
-            sha,
-          });
+      const currentTreeSha = currentCommit.tree.sha;
 
-          results.push({ success: true, path: configFile.path });
-        } else {
-          results.push({ success: false, path: configFile.path, error: "The path is not a file or does not exist." });
-        }
-      } catch (error: any) {
-        results.push({ success: false, path: configFile.path, error: error.message });
-      }
+      // Prepare tree changes for all config files
+      const treeChanges = args.configFiles.map(file => ({
+        path: file.path,
+        mode: "100644" as const,
+        type: "blob" as const,
+        content: file.content,
+      }));
+
+      // Create new tree with all changes
+      const { data: newTree } = await octokit.git.createTree({
+        owner: "hugity",
+        repo: args.id,
+        base_tree: currentTreeSha,
+        tree: treeChanges,
+      });
+
+      // Create commit with all changes
+      const { data: newCommit } = await octokit.git.createCommit({
+        owner: "hugity",
+        repo: args.id,
+        message: "Update Hugo configuration files",
+        tree: newTree.sha,
+        parents: [currentCommitSha],
+      });
+
+      // Update the main branch reference
+      await octokit.git.updateRef({
+        owner: "hugity",
+        repo: args.id,
+        ref: "heads/main",
+        sha: newCommit.sha,
+      });
+
+      return args.configFiles.map(file => ({
+        success: true,
+        path: file.path
+      }));
+
+    } catch (error) {
+      console.error("Failed to update config files:", error);
+      throw new Error("Failed to update configuration files. Please try again.");
     }
-
-    return results;
   }
 });
 
