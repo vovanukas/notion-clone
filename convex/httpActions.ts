@@ -14,7 +14,8 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
     let pagesUrl;
     if (data.buildStatus === "BUILT") {
         pagesUrl = await ctx.runAction(api.github.getPagesUrl, {
-        id: id
+          id: id,
+          callbackUserId: token
         });
     }
 
@@ -35,4 +36,4 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-  }); 
+  });

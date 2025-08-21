@@ -1,36 +1,85 @@
 "use node";
 
-import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
+import { action, ActionCtx } from "./_generated/server";
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
 import matter from "gray-matter";
 import { createClerkClient } from "@clerk/backend";
+import { Id } from "./_generated/dataModel";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
-function getPrivateKey() {
-  const base64Key = process.env.GITHUB_PRIVATE_KEY_BASE64;
-  if (!base64Key) {
-    throw new Error("GitHub private key not found in environment");
-  }
+async function getOctokitFromUserId(userId: string) {
   try {
-    return Buffer.from(base64Key, 'base64').toString('utf8');
+    const user = await clerkClient.users.getUser(userId);
+    const tokenResponse = await clerkClient.users.getUserOauthAccessToken(user.id, "github");
+
+    if (!tokenResponse.data?.[0]?.token) {
+      throw new ConvexError("GitHub account not connected. Please connect your GitHub account in settings.");
+    }
+
+    return new Octokit({
+      auth: tokenResponse.data[0].token
+    });
   } catch (error) {
-    throw new Error("Failed to decode GitHub private key");
+    console.error("Failed to get GitHub token:", error);
+    throw new ConvexError("Failed to authenticate with GitHub");
   }
 }
 
-const octokit = new Octokit({
-  authStrategy: createAppAuth,
-  auth: {
-    appId: process.env.GITHUB_APP_ID!,
-    privateKey: getPrivateKey(),
-    installationId: process.env.GITHUB_INSTALLATION_ID!,
+async function getUserOctokit(ctx: ActionCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new ConvexError("Unauthenticated");
   }
-});
+
+  return getOctokitFromUserId(identity.subject);
+}
+
+async function getAppOctokit(ctx: ActionCtx, documentId: Id<"documents">) {
+  // Check user authentication
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new ConvexError("Unauthenticated");
+  }
+
+  // Check document authorization
+  const document = await ctx.runQuery(api.documents.getById, { documentId });
+  if (!document) {
+    throw new ConvexError("Document not found");
+  }
+
+  if (document.userId !== identity.subject) {
+    throw new ConvexError("Not authorized to access this document");
+  }
+
+  // Get GitHub App authentication
+  const base64Key = process.env.GITHUB_PRIVATE_KEY_BASE64;
+  if (!base64Key) {
+    throw new ConvexError("GitHub App not properly configured");
+  }
+
+  try {
+    const privateKey = Buffer.from(base64Key, 'base64').toString('utf8');
+
+    return new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: process.env.GITHUB_APP_ID!,
+        privateKey,
+        installationId: process.env.GITHUB_INSTALLATION_ID!,
+      }
+    });
+  } catch (error) {
+    console.error("GitHub App authentication error:", error);
+    throw new ConvexError("Failed to initialize GitHub client");
+  }
+}
+
+
 
 export const createRepo = action({
   args: { 
@@ -39,17 +88,9 @@ export const createRepo = action({
     siteTemplate: v.string(),
    },
   handler: async (ctx, args) => {
-    const { data } = await octokit.request("/app");
-    console.log("Data:", data);
-
     console.log("Creating repo...");
     console.log("Site Name:", args.siteName);
     const identity = await ctx.auth.getUserIdentity();
-    const user = await clerkClient.users.getUser(identity?.subject!)
-    const token = await clerkClient.users.getUserOauthAccessToken(user.id, "github")
-
-    console.log("User:", user);
-    console.log("Token:", token);
 
     if (!identity) {
       throw new Error ("Unauthenticated");
@@ -61,8 +102,9 @@ export const createRepo = action({
       title: args.siteName,
     })
 
+    const octokit = await getAppOctokit(ctx, args.repoName);
     try {
-      // Step 1: Create a new repository in the organization
+      // Create a new repository in the organization
       const response = await octokit.repos.createInOrg({
         org: "hugity",
         name: args.repoName,
@@ -85,9 +127,15 @@ export const createRepo = action({
         secretName: 'WORKFLOW_TOKEN'
       }))
 
+      // Add a user as a collaborator
+      const user = await clerkClient.users.getUser(identity.subject);
+      await octokit.repos.addCollaborator({
+        owner: "hugity",
+        repo: args.repoName,
+        username: user.username!,
+      });
 
-
-      // Step 2: Add a GitHub Actions workflow to set up Hugo
+      // Add a GitHub Actions workflow to set up Hugo
       const workflowContent = `
 name: Setup Hugo
 
@@ -183,10 +231,11 @@ export const publishPage = action({
    },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-
     if (!identity) {
-        throw new Error ("Unauthenticated");
+      throw new Error ("Unauthenticated");
     }
+
+    const octokit = await getUserOctokit(ctx);
 
     ctx.runMutation(api.documents.update, {
       id: args.id,
@@ -412,11 +461,7 @@ export const unpublishPage = action({
     id: v.id("documents"),
    },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-
-    if (!identity) {
-        throw new Error ("Unauthenticated");
-    }
+    const octokit = await getUserOctokit(ctx);
 
     try {
       // Update document status to unpublishing
@@ -457,7 +502,9 @@ export const dispatchDeployWorkflow = action({
   args: {
     id: v.id("documents"),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     await octokit.actions.createWorkflowDispatch({
       owner: "hugity",
       repo: args.id,
@@ -468,14 +515,53 @@ export const dispatchDeployWorkflow = action({
 });
 
 export const getPagesUrl = action({
-  args: { id:v.id("documents") },
-  handler: async (_, args) => {
-    const pagesInformation = await octokit.repos.getPages({
-      owner: "hugity",
-      repo: args.id
-    })
+  args: {
+    id: v.id("documents"),
+    callbackUserId: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    let octokit;
     
-    return pagesInformation.data.html_url;
+    if (args.callbackUserId) {
+      // If we have a callback user ID (from webhook), use that
+      octokit = await getOctokitFromUserId(args.callbackUserId);
+    } else {
+      // Otherwise use the normal user context
+      octokit = await getUserOctokit(ctx);
+    }
+
+    try {
+      // Add retries for getting Pages information
+      let retries = 3;
+      let delay = 2000; // Start with 2 second delay
+
+      while (retries > 0) {
+        try {
+          const pagesInformation = await octokit.repos.getPages({
+            owner: "hugity",
+            repo: args.id
+          });
+
+          return pagesInformation.data.html_url;
+        } catch (error: any) {
+          if (error.status === 404 && retries > 1) {
+            // Only wait and retry if we have retries left
+            await new Promise(resolve => setTimeout(resolve, delay));
+            retries--;
+            delay *= 2; // Exponential backoff
+            continue;
+          }
+          throw error; // Rethrow if it's not a 404 or we're out of retries
+        }
+      }
+
+      // If we get here, we've run out of retries
+      console.log("GitHub Pages site not ready after retries");
+      return undefined;
+    } catch (error) {
+      console.error("Error getting GitHub Pages URL:", error);
+      return undefined; // Return undefined instead of throwing
+    }
   }
 });
 
@@ -486,6 +572,8 @@ export const encryptAndPublishSecret = action({
     secretName: v.string(),
    },
   handler: async (ctx, args) => {
+    const octokit = await getAppOctokit(ctx, args.id);
+
     const publicGithubKey = await octokit.rest.actions.getRepoPublicKey({
       owner: 'hugity',
       repo: args.id,
@@ -522,6 +610,8 @@ export const fetchAndReturnGithubFileContent = action({
     path: v.string(),
   },
   handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       const response = await octokit.repos.getContent({
         owner: 'hugity',
@@ -547,6 +637,8 @@ export const fetchAllConfigFiles = action({
     id: v.id("documents"),
   },
   handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     const configFiles: Array<{
       content: string;
       path: string;
@@ -594,7 +686,7 @@ export const fetchAllConfigFiles = action({
 
       if (Array.isArray(configDirResponse.data)) {
         // It's a directory, fetch all files recursively
-        const configDirFiles = await fetchConfigDirectoryFiles(args.id, "config", configDirResponse.data);
+        const configDirFiles = await fetchConfigDirectoryFiles(octokit, args.id, "config", configDirResponse.data);
         configFiles.push(...configDirFiles);
       }
     } catch (error: any) {
@@ -618,6 +710,8 @@ export const fetchConfigFile = action({
   },
   handler: async (ctx, args) => {
     const configFiles = ["config.toml", "config.yaml", "config.yml", "config.json", "hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"];
+    const octokit = await getUserOctokit(ctx);
+
     for (const configFile of configFiles) {
       try {
         const response = await octokit.repos.getContent({
@@ -653,7 +747,9 @@ export const parseAndSaveSettingsObject = action({
     newSettings: v.string(),
     configPath: v.string(), // Added configPath
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     const contentResponse = await octokit.repos.getContent({
       owner: "hugity",
       repo: args.id,
@@ -680,7 +776,7 @@ export const parseAndSaveSettingsObject = action({
 });
 
 // Helper function to recursively fetch files from config directory
-async function fetchConfigDirectoryFiles(repoId: string, dirPath: string, dirContents: any[]): Promise<Array<{
+async function fetchConfigDirectoryFiles(octokit: Octokit, repoId: string, dirPath: string, dirContents: any[]): Promise<Array<{
   content: string;
   path: string;
   name: string;
@@ -727,7 +823,7 @@ async function fetchConfigDirectoryFiles(repoId: string, dirPath: string, dirCon
           path: item.path,
         });
         if (Array.isArray(subDirResponse.data)) {
-          const subDirFiles = await fetchConfigDirectoryFiles(repoId, item.path, subDirResponse.data);
+          const subDirFiles = await fetchConfigDirectoryFiles(octokit, repoId, item.path, subDirResponse.data);
           files.push(...subDirFiles);
         }
       } catch (error: any) {
@@ -749,7 +845,9 @@ export const parseAndSaveMultipleConfigFiles = action({
       isDirectory: v.boolean(),
     })),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     const results = [];
     
     for (const configFile of args.configFiles) {
@@ -789,7 +887,9 @@ export const fetchGitHubFileTree = action({
   args: {
     id: v.id("documents")
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       // Step 1: Get the entire tree of the main branch
       const { data: mainTree } = await octokit.git.getTree({
@@ -828,7 +928,9 @@ export const updateFileContent = action({
     id: v.id("documents"),
     filesToUpdate: v.any(),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     if (args.filesToUpdate.length === 0) {
       throw new Error("No files to update");
     }
@@ -923,7 +1025,9 @@ export const uploadImage = action({
     file: v.string(),
     filename: v.string(),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       const response = await octokit.repos.createOrUpdateFileContents({
         owner: 'hugity',
@@ -945,7 +1049,9 @@ export const uploadImage = action({
 
 export const deleteRepo = action({
   args: { id: v.id("documents") },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getAppOctokit(ctx, args.id);
+
     try {
       await octokit.repos.delete({
         owner: 'hugity',
@@ -963,7 +1069,9 @@ export const deleteImage = action({
     id: v.id("documents"),
     imagePath: v.string(),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       console.log("Attempting to delete image:", {
         repo: args.id,
@@ -1026,7 +1134,9 @@ export const createMarkdownFileInRepo = action({
     filePath: v.string(), // e.g. content/en/about/_index.md or content/en/about/page.md
     content: v.string(),  // markdown content (frontmatter + body)
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       // Decode the filePath to handle any double-encoded characters
       const decodedPath = decodeURIComponent(args.filePath);
@@ -1069,6 +1179,7 @@ export const deleteFile = action({
     filePath: v.string(), // This is the top-level path to delete (file or directory)
   },
   handler: async (ctx, args) => { // ctx is available if we need to call other actions/mutations
+    const octokit = await getUserOctokit(ctx);
 
     const deletePathRecursive = async (currentPath: string) => {
       console.log("[deletePathRecursive] Attempting to get content for path:", currentPath);
@@ -1178,6 +1289,7 @@ export const renamePathInRepo = action({
     itemType: v.union(v.literal("file"), v.literal("folder")),
   },
   handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
     const owner = "hugity";
     const repo = args.id;
 
@@ -1337,7 +1449,9 @@ export const fetchAssetsTree = action({
   args: {
     id: v.id("documents")
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       // Step 1: Get the entire tree of the main branch
       const { data: mainTree } = await octokit.git.getTree({
@@ -1404,7 +1518,9 @@ export const deleteAsset = action({
     id: v.id("documents"),
     filePath: v.string(),
   },
-  handler: async (_, args) => {
+  handler: async (ctx, args) => {
+    const octokit = await getUserOctokit(ctx);
+
     try {
       // First, get the current file to get its SHA
       const response = await octokit.repos.getContent({

@@ -33,10 +33,11 @@ export const Menu = ({
 
     const onDeleteSitePermanently = async () => {
         router.push("/documents");
-        const promise = Promise.all([
-            deleteRepo({ id: documentId }),
-            remove({ id: documentId })
-        ]);
+        const promise = (async () => {
+            await deleteRepo({ id: documentId });
+            await remove({ id: documentId });
+        })();
+
         toast.promise(promise, {
             loading: "Deleting site...",
             success: "Site deleted permanently!",
