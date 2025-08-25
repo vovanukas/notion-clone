@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
@@ -58,7 +58,7 @@ export default function AssetsPage() {
   const uploadImage = useAction(api.github.uploadImage);
   const deleteAsset = useAction(api.github.deleteAsset);
 
-  const loadAssets = async () => {
+  const loadAssets = useCallback(async () => {
     if (!documentId) return;
     
     setIsLoading(true);
@@ -85,13 +85,13 @@ export default function AssetsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [documentId, fetchAssetsTree]);
 
   useEffect(() => {
     if (documentId && document?.buildStatus === "BUILT") {
       loadAssets();
     }
-  }, [documentId, document?.buildStatus]);
+  }, [documentId, document?.buildStatus, loadAssets]);
 
   const handleUpload = async (error: FilePondErrorDescription | null, fileItem: FilePondFile) => {
     if (error || !documentId) return;

@@ -117,7 +117,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         return;
       }
 
-      if (!document || document.buildStatus === "BUILDING") {
+      if (document?.buildStatus === "BUILDING" || !document) {
         resetSidebarState();
         return;
       }
@@ -152,9 +152,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       }
     }
     loadFileTree();
-  }, [params.documentId, document?.buildStatus, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
+  }, [params.documentId, document, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
 
-  const handleCreateItem = async (parentId: string | undefined, type: "file" | "folder") => {
+  const handleCreateItem = useCallback(async (parentId: string | undefined, type: "file" | "folder") => {
     if (!params.documentId) return;
     const itemName = window.prompt(`Enter new ${type} name:`);
     if (!itemName) return;
@@ -214,9 +214,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [params.documentId, createMarkdownFile, refreshTree, rawTreeData, setError, setIsLoading]);
 
-  const handleDeleteItem = async (itemPath: string | undefined) => {
+  const handleDeleteItem = useCallback(async (itemPath: string | undefined) => {
     if (!itemPath || !params.documentId) return;
 
     const confirmDelete = window.confirm("Are you sure you want to delete this item permanently? This action cannot be undone.");
@@ -243,9 +243,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [params.documentId, deleteFile, refreshTree, setError, setIsLoading]);
 
-  const handleRenameItem = async (itemPath: string | undefined, currentName: string | undefined, itemType: string | undefined) => {
+  const handleRenameItem = useCallback(async (itemPath: string | undefined, currentName: string | undefined, itemType: string | undefined) => {
     if (!itemPath || !currentName || !params.documentId || !itemType) return;
 
     const newNameFromPrompt = window.prompt(`Enter new name for "${currentName}":`, currentName);
@@ -295,7 +295,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [params.documentId, renameGithubPath, refreshTree, router, params.path, setIsLoading]);
 
   const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
@@ -370,7 +370,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         },
       };
     });
-  }, [router, params.documentId, handleCreateItem, handleDeleteItem, handleRenameItem, renameGithubPath, refreshTree]);
+  }, [router, params.documentId, handleCreateItem, handleDeleteItem, handleRenameItem]);
 
   const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
 

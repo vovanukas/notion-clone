@@ -62,7 +62,7 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                 setConfigLoading(false);
             }
         }
-        if (documentId && document && document.buildStatus && document.buildStatus === "BUILT") {
+        if (documentId && document?.buildStatus === "BUILT") {
             loadConfigs();
         }
     }, [documentId, fetchAllConfigs, document?.buildStatus]);

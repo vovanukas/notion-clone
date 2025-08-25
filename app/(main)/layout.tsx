@@ -7,6 +7,7 @@ import { AppSidebar } from "./_components/app-sidebar";
 import { SearchCommand } from "@/components/search-command";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Navbar } from "./_components/navbar";
+import { ModalProvider } from "@/components/providers/modal-provider";
 
 const MainLayout = ({
     children
@@ -41,6 +42,7 @@ const MainLayout = ({
               </div>
             </SidebarInset>
           </div>
+          <ModalProvider />
         </SidebarProvider>
       </div>
      );
