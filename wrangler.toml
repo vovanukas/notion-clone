@@ -1,0 +1,6 @@
+name = "hugity"
+
+compatibility_flags = ["nodejs_compat_v2"]
+
+main = ".worker-next/index.mjs"
+assets = { directory = ".worker-next/assets", binding = "ASSETS" }
