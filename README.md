@@ -1,7 +1,6 @@
 # Jotion
 
-Jotion is a clone of the popular note-taking application Notion. It's built with Next.js as a learning exercise,
-following a tutorial on YouTube.
+Jotion is a clone of the popular note-taking application Notion. It's built with Next.js as a learning exercise, following a tutorial on YouTube.
 
 You can view the live version of the project [here](https://jotion-osadhi.vercel.app/).
 
