@@ -1,7 +1,7 @@
 export default {
     providers: [
         {
-            domain: "https://guided-marlin-81.clerk.accounts.dev",
+            domain: process.env.CLERK_FRONTEND_API_URL,
             applicationID: "convex",
         }
     ]
