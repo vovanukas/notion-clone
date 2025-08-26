@@ -17,7 +17,6 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { ExternalLink, Check, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 
 interface Template {
   _id: string;
@@ -144,7 +143,7 @@ export const TemplateSelectorModal = ({ onConfirm }: TemplateSelectorModalProps)
                   onClick={() => handleTemplateSelect(template)}
                 >
                   <div className="relative">
-                    <Image
+                    <img
                       src={template.previewImage}
                       alt={`${template.name} preview`}
                       className="w-full h-48 object-cover rounded-t-lg"

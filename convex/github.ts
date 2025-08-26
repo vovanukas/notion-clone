@@ -127,6 +127,12 @@ export const createRepo = action({
         secretName: 'WORKFLOW_TOKEN'
       }))
 
+      await ctx.runAction(api.github.encryptAndPublishSecret, ({
+        id: args.repoName,
+        secret: process.env.CONVEX_SITE_URL!,
+        secretName: 'CONVEX_SITE_URL'
+      }))
+
       // Add a user as a collaborator
       const user = await clerkClient.users.getUser(identity.subject);
       await octokit.repos.addCollaborator({
@@ -187,7 +193,7 @@ jobs:
       if: success()
       uses: distributhor/workflow-webhook@v3
       with:
-        webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+        webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
         data: '{ "buildStatus": "BUILT", "publishStatus": "UNPUBLISHED" }'
@@ -196,7 +202,7 @@ jobs:
       if: failure()
       uses: distributhor/workflow-webhook@v3
       with:
-        webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+        webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
         data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'
@@ -294,6 +300,9 @@ export const publishPage = action({
               repo: args.id,
               workflow_id: file.name,
               ref: "main",
+              inputs: {
+                callbackUrl: process.env.CONVEX_SITE_URL! + "/callbackPageDeployed",
+              },
             });
             return; // Successfully dispatched existing workflow
           } catch (dispatchError) {
@@ -353,7 +362,7 @@ jobs:
         if: success()
         uses: distributhor/workflow-webhook@v3
         with:
-          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
           data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
@@ -362,7 +371,7 @@ jobs:
         if: failure()
         uses: distributhor/workflow-webhook@v3
         with:
-          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
           data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
@@ -431,7 +440,7 @@ jobs:
         if: success()
         uses: distributhor/workflow-webhook@v3
         with:
-          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
           data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
@@ -440,7 +449,7 @@ jobs:
         if: failure()
         uses: distributhor/workflow-webhook@v3
         with:
-          webhook_url: 'https://cool-pelican-27.convex.site/callbackPageDeployed'
+          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
           webhook_auth_type: "bearer"
           webhook_auth: \${{ secrets.CALLBACK_BEARER }}
           data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
@@ -510,6 +519,9 @@ export const dispatchDeployWorkflow = action({
       repo: args.id,
       workflow_id: "deploy.yml",
       ref: "main",
+      inputs: {
+        callbackUrl: process.env.CONVEX_SITE_URL! + "/callbackPageDeployed",
+      },
     });
   },
 });
