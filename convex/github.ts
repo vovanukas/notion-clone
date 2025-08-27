@@ -254,6 +254,12 @@ export const publishPage = action({
       secretName: 'CALLBACK_BEARER'
     }))
 
+    await ctx.runAction(api.github.encryptAndPublishSecret, ({
+        id: args.id,
+        secret: process.env.CONVEX_SITE_URL!,
+        secretName: 'CONVEX_SITE_URL'
+      }))
+
     // Check if GitHub Pages is enabled, and enable it if not
     try {
       await octokit.repos.getPages({
