@@ -3,7 +3,7 @@ import { api } from './_generated/api';
 
 export const callbackPageDeployed = httpAction(async (ctx, request) => {
     const { repository, data } = await request.json();
-    const id = repository.split('/')[1]
+    const id = repository.split('/')[1];
 
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {

@@ -21,12 +21,22 @@ async function getOctokitFromUserId(userId: string) {
       throw new ConvexError("GitHub account not connected. Please connect your GitHub account in settings.");
     }
 
-    return new Octokit({
+    const octokit = new Octokit({
       auth: tokenResponse.data[0].token
     });
+
+    // Verify the token works
+    try {
+      await octokit.rest.users.getAuthenticated();
+      return octokit;
+    } catch (apiError) {
+      throw new ConvexError("GitHub token validation failed. Token may be expired or invalid.");
+    }
   } catch (error) {
-    console.error("Failed to get GitHub token:", error);
-    throw new ConvexError("Failed to authenticate with GitHub");
+    if (error instanceof ConvexError) {
+      throw error;
+    }
+    throw new ConvexError("Failed to authenticate with GitHub: " + (error instanceof Error ? error.message : "Unknown error"));
   }
 }
 
@@ -139,7 +149,14 @@ export const createRepo = action({
         owner: "hugity",
         repo: args.repoName,
         username: user.username!,
+        permission: "maintain",
       });
+
+      await octokit.repos.createPagesSite({
+        owner: "hugity",
+        repo: args.repoName,
+        build_type: "workflow",
+      })
 
       // Add a GitHub Actions workflow to set up Hugo
       const workflowContent = `
@@ -217,12 +234,6 @@ jobs:
         content: Buffer.from(workflowContent).toString("base64"), // Encode to base64
       });
 
-      await octokit.repos.createPagesSite({
-        owner: "hugity",
-        repo: args.repoName,
-        build_type: "workflow",
-      })
-
       return repoUrl;
     } catch (error) {
       console.error("Error creating repository or adding workflow:", error);
@@ -259,27 +270,6 @@ export const publishPage = action({
         secret: process.env.CONVEX_SITE_URL!,
         secretName: 'CONVEX_SITE_URL'
       }))
-
-    // Check if GitHub Pages is enabled, and enable it if not
-    try {
-      await octokit.repos.getPages({
-        owner: "hugity",
-        repo: args.id
-      });
-    } catch (error: any) {
-      if (error.status === 404) {
-        // GitHub Pages is not enabled, so enable it
-        console.log("GitHub Pages not enabled, enabling it...");
-        await octokit.repos.createPagesSite({
-          owner: "hugity",
-          repo: args.id,
-          build_type: "workflow",
-        });
-      } else {
-        // Some other error occurred
-        throw error;
-      }
-    }
 
     try {
       // First try to find any existing deployment workflow files
