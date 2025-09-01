@@ -31,7 +31,7 @@ const findCoverImage = async (metadata: any, documentId: string) => {
     if (!metadata) return null;
     
     // Look through all metadata values for an image path
-    for (const [key, value] of Object.entries(metadata)) {
+    for (const [, value] of Object.entries(metadata)) {
         if (typeof value === 'string' && isImagePath(value)) {
             // Try both paths
             const paths = [
