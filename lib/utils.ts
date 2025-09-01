@@ -10,7 +10,7 @@ export function isImagePath(path: string): boolean {
   return imageExtensions.some(ext => path.toLowerCase().endsWith(ext));
 }
 
-export function findImageKey(changedFile: { [key: string]: any } | null) {
+export function findImageKey(changedFile: { [key: string]: any } | null | undefined) {
   if (!changedFile) return null;
 
   // Look through all properties for an image path
