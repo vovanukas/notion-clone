@@ -17,6 +17,7 @@ import { useAppSidebar } from "@/hooks/use-app-sidebar";
 import { useCreateBlockNote } from "@blocknote/react";
 import { PartialBlock } from "@blocknote/core";
 import Image from "next/image";
+import { isImagePath } from "@/lib/utils";
 
 interface FilePathPageProps {
     params: Promise<{
@@ -24,6 +25,35 @@ interface FilePathPageProps {
         filePath: [];
     }>;
 }
+
+// Helper function to find and validate image URLs
+const findCoverImage = async (metadata: any, documentId: string) => {
+    if (!metadata) return null;
+    
+    // Look through all metadata values for an image path
+    for (const [key, value] of Object.entries(metadata)) {
+        if (typeof value === 'string' && isImagePath(value)) {
+            // Try both paths
+            const paths = [
+                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/${value}`,
+                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/assets/${value}`
+            ];
+
+            // Try each path
+            for (const path of paths) {
+                try {
+                    const response = await fetch(path, { method: 'HEAD' });
+                    if (response.ok) {
+                        return path;
+                    }
+                } catch (error) {
+                    console.log(`Failed to check path: ${path}`, error);
+                }
+            }
+        }
+    }
+    return null;
+};
 
 const FilePathPage = ({ params }: FilePathPageProps) => {
     const { documentId, filePath } = use(params);
@@ -35,6 +65,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const [error, setError] = useState<string | null>(null);
     const [metadata, setMetadata] = useState<{ [key: string]: any } | null>(null);
     const [previousDocumentId, setPreviousDocumentId] = useState<string | null>(null);
+    const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
 
     const { updateFile, resetChangedFiles, getFileChanges } = useUnsavedChanges();
     const { getNodeByPath } = useAppSidebar();
@@ -102,6 +133,15 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         loadContent();
     }, [loadContent]);
 
+    // Update cover image URL when metadata changes
+    useEffect(() => {
+        if (metadata && documentId) {
+            findCoverImage(metadata, documentId).then(url => {
+                setCoverImageUrl(url);
+            });
+        }
+    }, [metadata, documentId]);
+
     const onChange = useCallback(async (content: string) => {
         const blocks: PartialBlock[] = JSON.parse(content);
         const markdown = await editor.blocksToMarkdownLossy(blocks);
@@ -153,11 +193,11 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         );
     }
 
-    const coverImageUrl = `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/${metadata?.featured_image}`;
+
 
     return (
         <div className="pb-40">
-            {metadata?.featured_image && <Cover url={coverImageUrl} />}
+            {coverImageUrl && <Cover url={coverImageUrl} />}
             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
                 <Toolbar
                     onTitleChange={onTitleChange}

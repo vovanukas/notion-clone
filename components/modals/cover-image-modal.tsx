@@ -20,6 +20,7 @@ import 'filepond/dist/filepond.min.css';
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { findImageKey } from "@/lib/utils";
 
 
 const generateUniqueFilename = (originalFilename: string): string => {
@@ -40,7 +41,7 @@ export const CoverImageModal = () => {
     const coverImage = useCoverImage();
     const uploadImage = useAction(api.github.uploadImage);
     const saveContent = useAction(api.github.updateFileContent);
-    const { updateFile, changedFiles, resetChangedFiles } = useUnsavedChanges();
+    const { updateFile, changedFiles, resetChangedFiles, getFileChanges } = useUnsavedChanges();
 
     const onClose = () => {
         setFiles([]);
@@ -69,11 +70,13 @@ export const CoverImageModal = () => {
             });
             if (res && res.content && res.content.path) {
                 const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+                const currentChanges = getFileChanges(filePathString as string);
+                const imageKey = findImageKey(currentChanges) || 'image';
                 const imagePath = res.content.path.replace('static/', '');
                 updateFile(
                     filePathString as string,
                     {
-                        featured_image: imagePath
+                        [imageKey]: imagePath
                     }
                 );
 
