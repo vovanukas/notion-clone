@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,88 +12,45 @@ import {
 } from "@/components/ui/dialog";
 import { usePageSettings } from "@/hooks/use-page-settings";
 import { useParams } from "next/navigation";
-import { useAction } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import { Spinner } from "../spinner";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import yaml from 'js-yaml';
 import Editor from "@monaco-editor/react";
 
 export const SettingsModal = () => {
   const pageSettings = usePageSettings();
   const params = useParams();
-  const [frontmatter, setFrontmatter] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filePath, setFilePath] = useState<string>("");
-  
-  const fetchFileContent = useAction(api.github.fetchAndReturnGithubFileContent);
-  const createMarkdownFileInRepo = useAction(api.github.createMarkdownFileInRepo);
+  const { getFileChanges, updateFile } = useUnsavedChanges();
 
-  const documentId = params.documentId as Id<"documents">;
   const filePathParam = params.filePath as string[];
+  const filePathString = filePathParam?.join('/') || '';
+  const decodedPath = decodeURIComponent(filePathString);
 
-  useEffect(() => {
-    async function loadFrontmatter() {
-      if (!pageSettings.isOpen || !documentId || !filePathParam) return;
-      
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const filePathString = filePathParam.join('/');
-        const decodedPath = decodeURIComponent(filePathString);
-        setFilePath(decodedPath);
-        
-        const fileContent = await fetchFileContent({
-          id: documentId,
-          path: `content/${decodedPath}`,
-        });
+  // Get the current file state from unsaved changes
+  const currentFile = getFileChanges(decodedPath);
 
-        // Extract frontmatter from markdown file
-        const frontmatterMatch = fileContent.match(/^---\n([\s\S]*?)\n---/);
-        if (frontmatterMatch) {
-          setFrontmatter(frontmatterMatch[1]);
-        } else {
-          setFrontmatter("");
-        }
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadFrontmatter();
-  }, [pageSettings.isOpen, documentId, filePathParam, fetchFileContent]);
+  // Convert metadata object to YAML string for display
+  const frontmatterString = currentFile ? yaml.dump(
+    Object.fromEntries(
+      Object.entries(currentFile)
+        .filter(([key]) => !['content', 'path', 'sha', 'isEdited'].includes(key))
+    )
+  ) : '';
 
   const handleEditorChange = (value: string | undefined) => {
-    setFrontmatter(value || "");
-  };
+    if (!value) return;
 
-  const handleSave = async () => {
     try {
-      // Get the current file content to preserve the markdown content
-      const currentFileContent = await fetchFileContent({
-        id: documentId,
-        path: `content/${filePath}`,
+      // Parse YAML back to object
+      const newMetadata = yaml.load(value) as Record<string, any>;
+
+      // Update the file with new metadata while preserving content and path
+      updateFile(decodedPath, {
+        ...newMetadata,
+        content: currentFile?.content || '',
+        sha: currentFile?.sha
       });
-
-      // Extract the markdown content (everything after the frontmatter)
-      const contentMatch = currentFileContent.match(/^---\n[\s\S]*?\n---\n([\s\S]*)/);
-      const markdownContent = contentMatch ? contentMatch[1] : currentFileContent;
-
-      // Create new file content with updated frontmatter
-      const newFileContent = `---\n${frontmatter}\n---\n${markdownContent}`;
-
-      await createMarkdownFileInRepo({
-        id: documentId,
-        filePath: `content/${filePath}`,
-        content: newFileContent,
-      });
-
-      pageSettings.onClose();
     } catch (err) {
-      setError("Failed to save frontmatter: " + (err as Error).message);
+      console.error('Failed to parse YAML:', err);
     }
   };
 
@@ -103,12 +60,10 @@ export const SettingsModal = () => {
         <DialogHeader>
           <DialogTitle>Page Settings</DialogTitle>
           <DialogDescription>
-            Modify your page frontmatter. Click save when you&apos;re done.
+            Modify your page frontmatter. Changes are saved automatically.
           </DialogDescription>
         </DialogHeader>
 
-        {loading && <Spinner size="lg" />}
-        {error && <p style={{ color: "red" }}>Error: {error}</p>}
         <div
           className="grid gap-4 py-4 overflow-y-auto"
           style={{ maxHeight: "400px" }}
@@ -117,15 +72,15 @@ export const SettingsModal = () => {
             height="300px"
             defaultLanguage="yaml"
             language="yaml"
-            value={frontmatter}
+            value={frontmatterString}
             onChange={handleEditorChange}
             theme="vs-dark"
           />
         </div>
 
         <DialogFooter>
-          <Button type="button" onClick={handleSave}>
-            Save changes
+          <Button type="button" onClick={pageSettings.onClose}>
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

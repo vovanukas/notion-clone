@@ -6,6 +6,7 @@ import { FileContent } from "@/types/hugo";
 type ChangedFile = FileContent & { 
   [key: string]: any;
   sha?: string; // Keep SHA separate from frontmatter
+  isEdited?: boolean; // Track if the file was actually edited
 };
 
 type UnsavedChangesStore = {
@@ -36,7 +37,20 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
       }, {} as Record<string, unknown>);
 
       if (existingFile) {
+        // Check if the content or metadata actually changed
+        const hasChanges = Object.entries(processedUpdates).some(([key, value]) => {
+          // Ignore isEdited flag when comparing
+          if (key === 'isEdited') return false;
+          return JSON.stringify(existingFile[key]) !== JSON.stringify(value);
+        });
+
         Object.assign(existingFile, processedUpdates);
+
+        // Only set isEdited if there are actual changes
+        if (hasChanges) {
+          existingFile.isEdited = true;
+        }
+
         const newState = { changedFiles: [...state.changedFiles] };
         console.log('Updated file:', newState.changedFiles);
         return newState;
@@ -44,6 +58,7 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
         const newFile: ChangedFile = {
           path: decodedPath,
           content: '',
+          isEdited: false, // New files start as not edited
           ...processedUpdates
         };
         const newState = {
@@ -59,7 +74,7 @@ export const useUnsavedChanges = create<UnsavedChangesStore>((set, get) => ({
     console.log('Reset all changed files');
   },
   
-  hasUnsavedChanges: () => get().changedFiles.length > 0,
+  hasUnsavedChanges: () => get().changedFiles.some(file => file.isEdited),
   
   getFileChanges: (path: string) => {
     const decodedPath = decodeURIComponent(path);
