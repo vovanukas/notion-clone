@@ -19,8 +19,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Jotion",
-  description: "The connected workspace where better, faster work happens.",
+  title: "Hugity",
+  description: "Launch a website in minutes.",
   icons: {
     icon: [
       {

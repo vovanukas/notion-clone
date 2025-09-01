@@ -36,9 +36,9 @@ export const TrashBox = () => {
         const promise = restore ({ id:documentId });
 
         toast.promise(promise, {
-            loading: "Restoring note...",
-            success: "Note restored!",
-            error: "Failed to restore note."
+            loading: "Restoring page...",
+            success: "Page restored!",
+            error: "Failed to restore page."
         });
     }
 
@@ -48,9 +48,9 @@ export const TrashBox = () => {
         const promise = remove ({ id:documentId });
 
         toast.promise(promise, {
-            loading: "Deleting note...",
-            success: "Note deleted!",
-            error: "Failed to delete note."
+            loading: "Deleting page...",
+            success: "Page deleted!",
+            error: "Failed to delete page."
         });
 
         if (params.documentId === documentId) {
