@@ -14,6 +14,7 @@ import {
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner";
+import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Trash } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,10 +54,17 @@ export const Menu = ({
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-60" align="end" alignOffset={8} forceMount>
-                <DropdownMenuItem onClick={onDeleteSitePermanently} className="text-destructive focus:text-red-600">
-                    <Trash className="h-4 w-4 mr-2" />
-                    Delete Site Permanently
-                </DropdownMenuItem>
+                <ConfirmModal onConfirm={onDeleteSitePermanently}>
+                    <DropdownMenuItem
+                        className="text-destructive focus:text-red-600"
+                        onSelect={(e) => {
+                            e.preventDefault();
+                        }}
+                    >
+                        <Trash className="h-4 w-4 mr-2" />
+                        Delete Site Permanently
+                    </DropdownMenuItem>
+                </ConfirmModal>
                 <DropdownMenuSeparator />
                 <div className="text-xs text-muted-foreground p-2">
                     Last edited by: {user?.fullName}

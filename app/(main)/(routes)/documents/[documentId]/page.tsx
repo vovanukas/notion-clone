@@ -263,9 +263,27 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                                 Modify your site settings. Switch between files using the tabs below.
                             </p>
                         </div>
-                        <Badge variant="secondary">
-                            {configFiles.length} config file{configFiles.length > 1 ? 's' : ''}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="secondary">
+                                {configFiles.length} config file{configFiles.length > 1 ? 's' : ''}
+                            </Badge>
+                            <Button
+                                type="button"
+                                onClick={handleConfigSave}
+                                disabled={savingConfig}
+                            >
+                                {savingConfig ? (
+                                    <>
+                                        <div className="mr-2">
+                                            <Spinner size="sm" />
+                                        </div>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    "Save all changes"
+                                )}
+                            </Button>
+                        </div>
                     </div>
                     
                     {/* Config File Tabs */}
@@ -317,24 +335,7 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                         </div>
                     )}
 
-                    <div className="flex justify-end mt-4">
-                        <Button 
-                            type="button" 
-                            onClick={handleConfigSave}
-                            disabled={savingConfig}
-                        >
-                            {savingConfig ? (
-                                <>
-                                    <div className="mr-2">
-                                        <Spinner size="sm" />
-                                    </div>
-                                    Saving...
-                                </>
-                            ) : (
-                                "Save all changes"
-                            )}
-                        </Button>
-                    </div>
+
                 </div>
             </div>
             <SettingsModal />
