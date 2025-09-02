@@ -14,6 +14,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Check, Copy, Globe, AlertCircle } from "lucide-react";
 import { Loader } from "@/components/loader";
+import { Spinner } from "@/components/spinner";
 
 
 interface PublishProps {
@@ -70,6 +71,48 @@ export const Publish = ({initialData}: PublishProps) => {
         const publishStatus = data?.publishStatus;
 
         if (publishStatus === "PUBLISHING") {
+            // If we have a URL, show it's updating an existing site
+            if (data?.websiteUrl) {
+                return (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-x-2">
+                            <Spinner/>
+                            <p className="text-xs font-medium">
+                                Updating your website...
+                            </p>
+                        </div>
+                        <div className="flex items-center">
+                            <input
+                                className="flex-1 px-2 text-xs border rounded-l-md h-8 bg-muted truncate"
+                                value={data?.websiteUrl}
+                                disabled
+                            />
+                            <Button
+                                onClick={onCopy}
+                                disabled={copied}
+                                className="h-8 rounded-l-none"
+                            >
+                                {copied ? (
+                                    <Check className="h-4 w-4" />
+                                ) : (
+                                    <Copy className="h-4 w-4" />
+                                )}
+                            </Button>
+                        </div>
+                        <Button
+                        size="sm"
+                        className="w-full text-xs"
+                        disabled={isSubmitting}
+                        onClick={onUnpublish}
+                        variant="destructive"
+                        >
+                            Unpublish
+                        </Button>
+                    </div>
+                );
+            }
+
+            // Initial publish - no URL yet
             return (
                 <div className="flex flex-col items-center justify-center space-y-4">
                     <div className="h-12 w-12 flex items-center justify-center">
@@ -181,6 +224,9 @@ export const Publish = ({initialData}: PublishProps) => {
                             <Globe 
                                 className="text-sky-500 w-4 h-4 ml-2"
                             />
+                        )}
+                        {data?.publishStatus === "PUBLISHING" && (
+                            <Spinner size="sm" />
                         )}
                     </Button>
                 </PopoverTrigger>
