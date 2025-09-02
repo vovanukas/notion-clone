@@ -158,6 +158,12 @@ export const createRepo = action({
         build_type: "workflow",
       })
 
+      await octokit.repos.updateInformationAboutPagesSite({
+        owner: "hugity",
+        repo: args.repoName,
+        https_enforced: true,
+      });
+
       // Add a GitHub Actions workflow to set up Hugo
       const workflowContent = `
 name: Setup Hugo
