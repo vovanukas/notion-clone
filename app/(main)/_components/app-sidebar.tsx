@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Edit,
   Image as ImageIcon,
+  Plus,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -414,7 +415,31 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </Popover> */}
             <SidebarSeparator />
             <SidebarGroup>
-              <SidebarGroupLabel>Content</SidebarGroupLabel>
+              <div className="flex items-center justify-between px-4">
+                <SidebarGroupLabel>Content</SidebarGroupLabel>
+                {params.documentId && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        aria-label="New item"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start">
+                      <DropdownMenuItem onClick={() => handleCreateItem(undefined, "folder")}>
+                        <FolderIcon className="h-4 w-4 mr-2" />
+                        New Folder
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleCreateItem(undefined, "file")}>
+                        <FileIcon className="h-4 w-4 mr-2" />
+                        New File
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
               <SidebarGroupContent>
                 {isLoading && document?.buildStatus === "BUILDING" ? (
                   <div className="flex flex-col items-center justify-center p-4">
@@ -444,6 +469,24 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       className="hidden dark:block"
                     />
                     <p className="mt-2 text-sm text-center text-muted-foreground">{error}</p>
+                  </div>
+                ) : displayTreeData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-4 text-center">
+                    <Image
+                      src="/empty.png"
+                      height="200"
+                      width="200"
+                      alt="Empty"
+                      className="dark:hidden"
+                    />
+                    <Image
+                      src="/empty-dark.png"
+                      height="200"
+                      width="200"
+                      alt="Empty"
+                      className="hidden dark:block"
+                    />
+                    <p className="mt-2 text-sm text-muted-foreground">No files or folders yet</p>
                   </div>
                 ) : (
                   <TreeView
