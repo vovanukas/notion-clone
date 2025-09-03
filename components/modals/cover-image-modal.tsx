@@ -20,8 +20,6 @@ import 'filepond/dist/filepond.min.css';
 import { useDocument } from "@/hooks/use-document";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { findImageKey } from "@/lib/utils";
-
 
 const generateUniqueFilename = (originalFilename: string): string => {
     const timestamp = Date.now();

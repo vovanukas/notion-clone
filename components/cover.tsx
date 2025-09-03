@@ -25,7 +25,6 @@ export const Cover = ({url, preview}: coverImageProps) => {
     const coverImage = useCoverImage();
     const deleteImage = useAction(api.github.deleteImage);
     const { updateFrontmatterParsed } = useDocument();
-    const currentDocument = useDocument(state => state.documents.get(Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath as string));
     const saveContent = useAction(api.github.updateFileContent);
     const [isRemoving, setIsRemoving] = useState(false);
 

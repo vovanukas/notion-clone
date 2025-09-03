@@ -97,8 +97,8 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     }, [editor, initialContent]);
 
     const handleEditorChange = useCallback(async () => {
-        // const markdown = await editor.blocksToMarkdownLossy(editor.document);
-        // onChange(markdown);
+        const markdown = await editor.blocksToMarkdownLossy(editor.document);
+        onChange(markdown);
     }, [editor, onChange]);
 
     return (

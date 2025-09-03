@@ -1,6 +1,6 @@
 "use client";
 
-export const runtime = 'edge';
+export const runtime = "edge";
 
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -12,8 +12,6 @@ import { SettingsModal } from "@/components/modals/settings-modal";
 import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useDocument } from "@/hooks/use-document";
-import { useCreateBlockNote } from "@blocknote/react";
-import { PartialBlock } from "@blocknote/core";
 import Image from "next/image";
 import { isImagePath } from "@/lib/utils";
 
@@ -115,7 +113,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             setCoverImageUrl(null);
             return;
         }
-        
+
         const imageValue = currentDocument.frontmatter.parsed[currentDocument.imageKey];
         if (!imageValue) {
             setCoverImageUrl(null);
@@ -129,12 +127,12 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             }
         });
     }, [
-        documentId, 
+        documentId,
         coverImageUrl,
         // Watch for both the presence of imageKey and the entire frontmatter
         // This ensures we update when keys are removed
         currentDocument?.imageKey,
-        JSON.stringify(currentDocument?.frontmatter.parsed)
+        currentDocument?.frontmatter.parsed
     ]);
 
     const onChange = useCallback((markdown: string) => {
@@ -205,17 +203,17 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
                         _id: document._id,
                         icon: document.icon,
                         // Only include title if it exists in frontmatter
-                        ...(currentDocument.frontmatter.parsed.title && { 
-                            title: currentDocument.frontmatter.parsed.title 
+                        ...(currentDocument.frontmatter.parsed.title && {
+                            title: currentDocument.frontmatter.parsed.title
                         }),
                         ...currentDocument.frontmatter.parsed
                     }}
                     showIconPicker={false}
                 />
-                <Editor 
-                    onChange={onChange} 
-                    initialContent={currentDocument.markdown} 
-                    editable={true} 
+                <Editor
+                    onChange={onChange}
+                    initialContent={currentDocument.markdown}
+                    editable={true}
                 />
             </div>
             <SettingsModal />
