@@ -12,46 +12,29 @@ import {
 } from "@/components/ui/dialog";
 import { usePageSettings } from "@/hooks/use-page-settings";
 import { useParams } from "next/navigation";
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
-import yaml from 'js-yaml';
+import { useDocument } from "@/hooks/use-document";
 import Editor from "@monaco-editor/react";
 
 export const SettingsModal = () => {
   const pageSettings = usePageSettings();
   const params = useParams();
-  const { getFileChanges, updateFile } = useUnsavedChanges();
 
   const filePathParam = params.filePath as string[];
   const filePathString = filePathParam?.join('/') || '';
   const decodedPath = decodeURIComponent(filePathString);
 
-  // Get the current file state from unsaved changes
-  const currentFile = getFileChanges(decodedPath);
+  // Get document from store
+  const { updateFrontmatterRaw } = useDocument();
+  const currentDocument = useDocument(state => state.documents.get(decodedPath));
 
-  // Convert metadata object to YAML string for display
-  const frontmatterString = currentFile ? yaml.dump(
-    Object.fromEntries(
-      Object.entries(currentFile)
-        .filter(([key]) => !['content', 'path', 'sha', 'isEdited'].includes(key))
-    )
-  ) : '';
+  // Get raw frontmatter for display
+  const frontmatterString = currentDocument?.frontmatter.raw || '';
 
   const handleEditorChange = (value: string | undefined) => {
     if (!value) return;
 
-    try {
-      // Parse YAML back to object
-      const newMetadata = yaml.load(value) as Record<string, any>;
-
-      // Update the file with new metadata while preserving content and path
-      updateFile(decodedPath, {
-        ...newMetadata,
-        content: currentFile?.content || '',
-        sha: currentFile?.sha
-      });
-    } catch (err) {
-      console.error('Failed to parse YAML:', err);
-    }
+    // Update frontmatter in document store
+    updateFrontmatterRaw(decodedPath, value);
   };
 
   return (

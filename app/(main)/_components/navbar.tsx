@@ -17,37 +17,44 @@ import { Banner } from "./banner";
 import { Menu } from "./menu";
 import { Publish } from "./publish";
 import { Button } from "@/components/ui/button";
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useDocument } from "@/hooks/use-document";
 
 export const Navbar = () => {
   const saveContent = useAction(api.github.updateFileContent);
   const params = useParams();
   const router = useRouter();
   const documentId = params.documentId as Id<"documents">;
-  const { changedFiles, resetChangedFiles } = useUnsavedChanges();
   const { toggleSidebar } = useSidebar();
   const [previousDocumentId, setPreviousDocumentId] = useState<string | null>(null);
+  
+  // Get document store state and functions
+  const hasUnsavedChanges = useDocument(state => state.hasUnsavedChanges());
+  const { unloadAllDocuments, prepareAllForGithub } = useDocument();
 
   const document = useQuery(
     api.documents.getById,
     !!params.documentId  ? { documentId: documentId } : "skip",
   )
 
-  // Reset unsaved changes only when switching between different websites (different documentIds)
+  // Unload documents when switching between different websites
   useEffect(() => {
     if (previousDocumentId && previousDocumentId !== documentId) {
-      resetChangedFiles();
+      unloadAllDocuments();
     }
     setPreviousDocumentId(documentId);
-  }, [documentId, resetChangedFiles, previousDocumentId]);
+  }, [documentId, unloadAllDocuments, previousDocumentId]);
 
   const saveChanges = async () => {
+    // Get files ready for GitHub
+    const filesToUpdate = prepareAllForGithub();
+    if (filesToUpdate.length === 0) return;
+
     const promise = saveContent({
       id: documentId,
-      filesToUpdate: changedFiles
+      filesToUpdate
     }).then(() => {
-      resetChangedFiles();
-      router.refresh();
+      // Mark all documents as saved
+      useDocument.getState().markAllSaved();
     });
 
     toast.promise(promise, {
@@ -95,7 +102,7 @@ export const Navbar = () => {
               <Title initialData={document} />
             </div>
             <div className="flex items-center gap-x-2">
-              {changedFiles.length !== 0 && <Button onClick={saveChanges}>Save</Button>}
+              {hasUnsavedChanges && <Button onClick={saveChanges}>Save</Button>}
               <Publish initialData={document} />
               <Menu documentId={document._id} />
             </div>

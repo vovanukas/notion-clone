@@ -11,7 +11,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useDocument } from "@/hooks/use-document";
 import { useState } from "react";
 
 interface coverImageProps {
@@ -24,74 +24,76 @@ export const Cover = ({url, preview}: coverImageProps) => {
     const router = useRouter();
     const coverImage = useCoverImage();
     const deleteImage = useAction(api.github.deleteImage);
-    const { updateFile, changedFiles, resetChangedFiles } = useUnsavedChanges();
+    const { updateFrontmatterParsed } = useDocument();
+    const currentDocument = useDocument(state => state.documents.get(Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath as string));
     const saveContent = useAction(api.github.updateFileContent);
     const [isRemoving, setIsRemoving] = useState(false);
 
     const onRemove = async () => {
-        if (url && !isRemoving) {
-            setIsRemoving(true);
-            const promise = (async () => {
-                try {
-                    // Delete the image from GitHub
-                    const imagePath = url.split('/images/')[1];
-                    await deleteImage({
-                        id: params.documentId as Id<"documents">,
-                        imagePath: `images/${imagePath}`
-                    });
+        if (!url || isRemoving) return;
 
-                    const filePathString = Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath;
-                    
-                    // Update the file to remove the featured_image
-                    updateFile(
-                        filePathString as string,
-                        {
-                            featured_image: undefined
-                        }
-                    );
-
-                    // Save the changes
-                    await saveContent({
-                        id: params.documentId as Id<"documents">,
-                        filesToUpdate: changedFiles
-                    });
-                    resetChangedFiles();
-
-                    // Force a hard refresh of the page
-                    router.refresh();
-                } catch (error) {
-                    console.error("Error removing cover image:", error);
-                    // Even if the image deletion fails, we should still try to update the metadata
-                    try {
-                        const filePathString = Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath;
-                        updateFile(
-                            filePathString as string,
-                            {
-                                featured_image: undefined
-                            }
-                        );
-                        await saveContent({
-                            id: params.documentId as Id<"documents">,
-                            filesToUpdate: changedFiles
-                        });
-                        resetChangedFiles();
-                        router.refresh();
-                    } catch (updateError) {
-                        console.error("Failed to update metadata:", updateError);
-                        toast.error("Failed to update metadata. Please try again.");
-                    }
-                    throw error;
-                } finally {
-                    setIsRemoving(false);
-                }
-            })();
-
-            toast.promise(promise, {
-                loading: "Removing cover image...",
-                success: "Cover image removed successfully!",
-                error: "Failed to remove cover image."
-            });
+        const filePathString = Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath;
+        const doc = useDocument.getState().documents.get(filePathString);
+        
+        if (!doc) {
+            toast.error("Document not found");
+            return;
         }
+
+        // Get the image key from the document
+        const imageKey = doc.imageKey;
+        if (!imageKey) {
+            toast.error("Image key not found in document");
+            return;
+        }
+
+        setIsRemoving(true);
+        const promise = (async () => {
+            try {
+                // First, try to delete the image from GitHub
+                const imagePath = url.split('/images/')[1];
+                await deleteImage({
+                    id: params.documentId as Id<"documents">,
+                    imagePath: `images/${imagePath}`
+                });
+
+                // Update frontmatter to remove image
+                const newFrontmatter = { ...doc.frontmatter.parsed };
+                delete newFrontmatter[imageKey];
+                
+                // Update store first, then prepare for GitHub
+                updateFrontmatterParsed(filePathString, newFrontmatter);
+                const fileForGithub = useDocument.getState().prepareForGithub(filePathString);
+                if (!fileForGithub) {
+                    throw new Error("Failed to prepare file for GitHub");
+                }
+
+                // Save the updated content to GitHub
+                await saveContent({
+                    id: params.documentId as Id<"documents">,
+                    filesToUpdate: [{
+                        path: fileForGithub.path,
+                        content: fileForGithub.content
+                    }]
+                });
+
+                // Local state is already updated, just refresh the UI
+                
+                // Force a refresh to get the latest content
+                router.refresh();
+            } catch (error) {
+                console.error("Error removing cover image:", error);
+                throw error; // Re-throw to trigger error toast
+            } finally {
+                setIsRemoving(false);
+            }
+        })();
+
+        toast.promise(promise, {
+            loading: "Removing cover image...",
+            success: "Cover image removed successfully!",
+            error: "Failed to remove cover image."
+        });
     }
     
     return (

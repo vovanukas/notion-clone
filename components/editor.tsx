@@ -84,17 +84,21 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
+                console.log('📝 Initial markdown:', initialContent);
                 const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+                console.log('🔄 Parsed blocks:', blocks);
                 editor.replaceBlocks(editor.document, blocks);
+                const newBlocks = editor.document;
+                console.log('📄 Editor blocks after replace:', newBlocks);
                 isInitialMount.current = false;
             }
             parseAndSetContent();
         }
     }, [editor, initialContent]);
 
-    const handleEditorChange = useCallback(() => {
-        const currentContent = JSON.stringify(editor.document, null, 2);
-        onChange(currentContent);
+    const handleEditorChange = useCallback(async () => {
+        // const markdown = await editor.blocksToMarkdownLossy(editor.document);
+        // onChange(markdown);
     }, [editor, onChange]);
 
     return (

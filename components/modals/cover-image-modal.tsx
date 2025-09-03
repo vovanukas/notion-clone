@@ -17,7 +17,7 @@ import { api } from "@/convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import 'filepond/dist/filepond.min.css';
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+import { useDocument } from "@/hooks/use-document";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { findImageKey } from "@/lib/utils";
@@ -41,7 +41,8 @@ export const CoverImageModal = () => {
     const coverImage = useCoverImage();
     const uploadImage = useAction(api.github.uploadImage);
     const saveContent = useAction(api.github.updateFileContent);
-    const { updateFile, changedFiles, resetChangedFiles, getFileChanges } = useUnsavedChanges();
+    const { updateFrontmatterParsed } = useDocument();
+    const currentDocument = useDocument(state => state.documents.get(Array.isArray(filePath) ? filePath.join('/') : filePath as string));
 
     const onClose = () => {
         setFiles([]);
@@ -70,22 +71,29 @@ export const CoverImageModal = () => {
             });
             if (res && res.content && res.content.path) {
                 const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
-                const currentChanges = getFileChanges(filePathString as string);
-                const imageKey = findImageKey(currentChanges) || 'image';
-                const imagePath = res.content.path.replace('static/', '');
-                updateFile(
-                    filePathString as string,
-                    {
+                if (currentDocument) {
+                    const imagePath = res.content.path.replace('static/', '');
+                    // Use existing image key or create a new one if none exists
+                    const imageKey = currentDocument.imageKey || 'image';
+                    const newFrontmatter = {
+                        ...currentDocument.frontmatter.parsed,
                         [imageKey]: imagePath
-                    }
-                );
+                    };
+                    
+                    updateFrontmatterParsed(filePathString as string, newFrontmatter);
 
-                // Save the changes
-                await saveContent({
-                    id: documentId as Id<"documents">,
-                    filesToUpdate: changedFiles
-                });
-                resetChangedFiles();
+                    // Save the changes
+                    const fileForGithub = useDocument.getState().prepareForGithub(filePathString as string);
+                    if (fileForGithub) {
+                        await saveContent({
+                            id: documentId as Id<"documents">,
+                            filesToUpdate: [{
+                                path: fileForGithub.path,
+                                content: fileForGithub.content
+                            }]
+                        });
+                    }
+                }
                 router.refresh();
             }
         })();

@@ -1003,21 +1003,18 @@ export const updateFileContent = action({
       const changedFileNames = [];
 
       for (const file of args.filesToUpdate) {
-        const { content, path, sha, ...metadata } = file;  // Extract sha separately
+        const { content, path } = file;
 
         // Clean up the file name for the commit message
         const fileName = path.replace(/\.md$/, '').replace(/\//g, ', ').replace(/_/g, ' ');
         changedFileNames.push(fileName);
-
-        // Create the frontmatter string (without sha)
-        const frontmatter = matter.stringify(content, metadata);
 
         // Add to tree changes
         treeChanges.push({
           path: `content/${path}`,
           mode: "100644" as const,
           type: "blob" as const,
-          content: frontmatter,
+          content: content,
         });
       }
 

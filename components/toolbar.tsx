@@ -63,8 +63,8 @@ export const Toolbar = ({
 }: ToolbarProps) => {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const [isEditing, setIsEditing] = useState(false);
-    const [value, setValue] = useState(initialData.title);
-    const [pendingValue, setPendingValue] = useState(initialData.title);
+    const [value, setValue] = useState(initialData.title || '');
+    const [pendingValue, setPendingValue] = useState(initialData.title || '');
 
     const update = useMutation(api.documents.update);
     const removeIcon = useMutation(api.documents.removeIcon);
@@ -72,8 +72,8 @@ export const Toolbar = ({
     const pageSettings = usePageSettings();
 
     useEffect(() => {
-        setValue(initialData.title);
-        setPendingValue(initialData.title);
+        setValue(initialData.title || '');
+        setPendingValue(initialData.title || '');
     }, [initialData.title]);
 
     const enableInput = () => {

@@ -11,9 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SettingsModal } from "@/components/modals/settings-modal";
 import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useCallback, use } from "react";
-import matter from "gray-matter";
-import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
-import { useAppSidebar } from "@/hooks/use-app-sidebar";
+import { useDocument } from "@/hooks/use-document";
 import { useCreateBlockNote } from "@blocknote/react";
 import { PartialBlock } from "@blocknote/core";
 import Image from "next/image";
@@ -58,102 +56,106 @@ const findCoverImage = async (metadata: any, documentId: string) => {
 const FilePathPage = ({ params }: FilePathPageProps) => {
     const { documentId, filePath } = use(params);
     const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
+    const decodedPath = decodeURIComponent(filePathString);
     const fetchFileContent = useAction(api.github.fetchAndReturnGithubFileContent);
 
-    const [content, setContent] = useState<string>("");
-    const [loading, setLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-    const [metadata, setMetadata] = useState<{ [key: string]: any } | null>(null);
-    const [previousDocumentId, setPreviousDocumentId] = useState<string | null>(null);
     const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
-
-    const { updateFile, resetChangedFiles, getFileChanges } = useUnsavedChanges();
-    const { getNodeByPath } = useAppSidebar();
-    const currentFileNode = useMemo(() => getNodeByPath(filePathString), [filePathString, getNodeByPath]);
+    const [loading, setLoading] = useState<boolean>(true);
 
     const document = useQuery(api.documents.getById, useMemo(() => ({
         documentId: documentId,
     }), [documentId]));
 
     const Editor = useMemo(() => dynamic(() => import("@/components/editor"), { ssr: false }), []);
-    const editor = useCreateBlockNote();
 
-    // Reset unsaved changes only when switching between different websites (different documentIds)
-    useEffect(() => {
-        if (previousDocumentId && previousDocumentId !== documentId) {
-            resetChangedFiles();
-        }
-        setPreviousDocumentId(documentId);
-    }, [documentId, resetChangedFiles, previousDocumentId]);
-
-    useEffect(() => {
-        if (!loading && metadata) {
-            updateFile(filePathString, {
-                content,
-                ...metadata,
-                sha: currentFileNode?.sha
-            });
-        }
-    }, [content, metadata, currentFileNode?.sha, updateFile, filePathString, loading]);
+    // Get document from our store
+    const { loadDocument, getDocument, updateMarkdown } = useDocument();
+    const currentDocument = useDocument(state => state.documents.get(decodedPath));
 
     const loadContent = useCallback(async () => {
         if (!documentId || !filePath) return;
         
-        const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
-        const decodedPath = decodeURIComponent(filePathString);
+        console.log('📄 Loading document:', decodedPath);
+        useDocument.getState().debug();
         
-        // Check if there are existing unsaved changes for this file
-        const existingChanges = getFileChanges(decodedPath);
-        
-        if (existingChanges) {
-            // Use existing unsaved changes
-            setContent(existingChanges.content || "");
-            setMetadata(existingChanges as { [key: string]: any });
+        // Check if document is already loaded
+        const existingDoc = getDocument(decodedPath);
+        if (existingDoc) {
+            console.log('📄 Document already loaded:', decodedPath);
             setLoading(false);
             return;
         }
         
-        // No existing changes, load from server
+        // Load from server
         try {
             const fileContent = await fetchFileContent({
                 id: documentId,
                 path: `content/${decodedPath}`,
             });
-            const { data, content: actualContent } = matter(fileContent);
-            setContent(actualContent.trim());
-            setMetadata(data as { [key: string]: any });
+
+            // Load into document store
+            loadDocument(documentId, decodedPath, fileContent);
+            console.log('📄 Document loaded successfully:', decodedPath);
+            useDocument.getState().debug();
         } catch (err) {
-            setError((err as Error).message);
+            console.error("Failed to load document:", err);
         } finally {
             setLoading(false);
         }
-    }, [documentId, filePath, fetchFileContent, getFileChanges]);
+    }, [documentId, filePath, decodedPath, fetchFileContent, loadDocument, getDocument]);
 
     useEffect(() => {
         loadContent();
     }, [loadContent]);
 
-    // Update cover image URL when metadata changes
+    // Update cover image URL when image field changes
     useEffect(() => {
-        if (metadata && documentId) {
-            findCoverImage(metadata, documentId).then(url => {
-                setCoverImageUrl(url);
-            });
+        // Clear cover image if no valid image data
+        if (!currentDocument?.frontmatter.parsed || !documentId || !currentDocument.imageKey) {
+            setCoverImageUrl(null);
+            return;
         }
-    }, [metadata, documentId]);
+        
+        const imageValue = currentDocument.frontmatter.parsed[currentDocument.imageKey];
+        if (!imageValue) {
+            setCoverImageUrl(null);
+            return;
+        }
 
-    const onChange = useCallback(async (content: string) => {
-        const blocks: PartialBlock[] = JSON.parse(content);
-        const markdown = await editor.blocksToMarkdownLossy(blocks);
-        setContent(markdown);
-    }, [editor]);
+        // Only update URL if image exists
+        findCoverImage(currentDocument.frontmatter.parsed, documentId).then(url => {
+            if (url !== coverImageUrl) {
+                setCoverImageUrl(url);
+            }
+        });
+    }, [
+        documentId, 
+        coverImageUrl,
+        // Watch for both the presence of imageKey and the entire frontmatter
+        // This ensures we update when keys are removed
+        currentDocument?.imageKey,
+        JSON.stringify(currentDocument?.frontmatter.parsed)
+    ]);
+
+    const onChange = useCallback((markdown: string) => {
+        updateMarkdown(decodedPath, markdown);
+        console.log('📝 Document content updated:', decodedPath);
+        useDocument.getState().debug();
+    }, [updateMarkdown, decodedPath]);
 
     const onTitleChange = useCallback((value: string) => {
-        const newTitle = value;
-        setMetadata(prev => ({ ...prev, title: newTitle }));
-    }, []);
+        if (!currentDocument) return;
 
-    if (document === undefined || loading) {
+        const newFrontmatter = {
+            ...currentDocument.frontmatter.parsed,
+            title: value
+        };
+        useDocument.getState().updateFrontmatterParsed(decodedPath, newFrontmatter);
+        console.log('📑 Document title updated:', decodedPath);
+        useDocument.getState().debug();
+    }, [currentDocument, decodedPath]);
+
+    if (document === undefined || loading || !currentDocument) {
         return (
             <div>
                 <Cover.Skeleton />
@@ -169,7 +171,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         );
     }
 
-    if (document === null || error) {
+    if (document === null || currentDocument.error) {
         return (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
                 <Image
@@ -193,18 +195,28 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         );
     }
 
-
-
     return (
         <div className="pb-40">
             {coverImageUrl && <Cover url={coverImageUrl} />}
             <div className="md:max-w-3xl lg:max-w-4xl mx-auto">
                 <Toolbar
                     onTitleChange={onTitleChange}
-                    initialData={{ ...document, ...metadata }}
+                    initialData={{
+                        _id: document._id,
+                        icon: document.icon,
+                        // Only include title if it exists in frontmatter
+                        ...(currentDocument.frontmatter.parsed.title && { 
+                            title: currentDocument.frontmatter.parsed.title 
+                        }),
+                        ...currentDocument.frontmatter.parsed
+                    }}
                     showIconPicker={false}
                 />
-                <Editor onChange={onChange} initialContent={content} editable={true} />
+                <Editor 
+                    onChange={onChange} 
+                    initialContent={currentDocument.markdown} 
+                    editable={true} 
+                />
             </div>
             <SettingsModal />
         </div>
