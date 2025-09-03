@@ -31,6 +31,10 @@ export const Cover = ({url, preview}: coverImageProps) => {
     const onRemove = async () => {
         if (!url || isRemoving) return;
 
+        if (!params.filePath) {
+            toast.error("File path not found");
+            return;
+        }
         const filePathString = Array.isArray(params.filePath) ? params.filePath.join('/') : params.filePath;
         const doc = useDocument.getState().documents.get(filePathString);
         

@@ -75,6 +75,9 @@
     "zod": "^3.24.2",
     "zustand": "^5.0.1"
   },
+  "overrides": {
+    "prosemirror-view": "1.37.1"
+  },
   "devDependencies": {
     "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^20",

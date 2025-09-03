@@ -169,7 +169,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         );
     }
 
-    if (document === null || currentDocument.error) {
+    if (document === null) {
         return (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
                 <Image

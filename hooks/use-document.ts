@@ -43,8 +43,8 @@ type DocumentStore = {
   prepareForGithub: (path: string) => { path: string; content: string } | undefined;
   prepareAllForGithub: () => Array<{ path: string; content: string }>;
   unloadAllDocuments: () => void;
-  hasUnsavedChanges: () => boolean;
   markAllSaved: () => void;
+  debug: () => void;
 };
 
 export const useDocument = create<DocumentStore>((set, get) => ({
@@ -91,7 +91,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
           },
           sha: null,
           isEdited: false,
-          error: (err as Error).message,
           imageKey: null
         });
         return { documents: newDocs };
@@ -176,9 +175,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
         
         // Find image key in new frontmatter
         const imageKey = findImageKey(parsed);
-        const oldImageKey = doc.imageKey;
-
-
 
         const newDocs = new Map(state.documents);
         newDocs.set(path, {
@@ -188,7 +184,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
             parsed
           },
           isEdited: true,
-          error: null,
           imageKey
         });
         return { documents: newDocs };
@@ -201,7 +196,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
             ...doc.frontmatter,
             parsed
           },
-          error: (err as Error).message,
           imageKey: doc.imageKey // Keep existing imageKey on error
         });
         return { documents: newDocs };
@@ -274,7 +268,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
       isEdited: doc.isEdited,
       frontmatterKeys: Object.keys(doc.frontmatter.parsed),
       markdownPreview: doc.markdown,
-      error: doc.error,
       frontmatterRaw: doc.frontmatter.raw
     })));
     console.groupEnd();
