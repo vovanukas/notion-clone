@@ -81,11 +81,30 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
         uploadFile: handleUpload
     });
 
+    // Preprocess markdown to handle list and task list formatting issues
+    const preprocessMarkdown = (markdown: string): string => {
+        // Handle all combinations of bullet points and task lists
+        // Using [*-] to match either * or - as list markers
+        return markdown
+            // First, normalize all list items to have single line breaks
+            .replace(/(\n[*-] [^\n]+)\n\n([*-] )/g, '$1\n$2')
+            // Then specifically handle task list items
+            .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] )/g, '$1\n$2')
+            // Handle transition from bullet to task list
+            .replace(/(\n[*-] [^\n]+)\n\n([*-] \[[x ]\])/g, '$1\n$2')
+            // Handle transition from task list to bullet
+            .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] [^[])/g, '$1\n$2')
+            // Normalize all list markers to - for consistency
+            .replace(/\n\* /g, '\n- ');
+    };
+
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
                 console.log('📝 Initial markdown:', initialContent);
-                const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+                // Preprocess the markdown before parsing
+                const processedMarkdown = preprocessMarkdown(initialContent);
+                const blocks = await editor.tryParseMarkdownToBlocks(processedMarkdown);
                 console.log('🔄 Parsed blocks:', blocks);
                 editor.replaceBlocks(editor.document, blocks);
                 const newBlocks = editor.document;
@@ -98,7 +117,9 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
 
     const handleEditorChange = useCallback(async () => {
         const markdown = await editor.blocksToMarkdownLossy(editor.document);
-        onChange(markdown);
+        // Apply preprocessing to maintain consistency
+        const processedMarkdown = preprocessMarkdown(markdown);
+        onChange(processedMarkdown);
     }, [editor, onChange]);
 
     return (

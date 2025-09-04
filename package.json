@@ -10,9 +10,9 @@
     "pages:build": "npx @cloudflare/next-on-pages"
   },
   "dependencies": {
-    "@blocknote/core": "^0.20.0",
-    "@blocknote/mantine": "^0.20.0",
-    "@blocknote/react": "^0.20.0",
+    "@blocknote/core": "^0.37.0",
+    "@blocknote/mantine": "^0.37.0",
+    "@blocknote/react": "^0.37.0",
     "@blocknote/shadcn": "^0.20.0",
     "@clerk/backend": "^2.9.2",
     "@clerk/clerk-react": "^5.14.3",
