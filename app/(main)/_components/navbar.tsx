@@ -56,8 +56,8 @@ export const Navbar = () => {
     });
 
     toast.promise(promise, {
-      loading: "Saving changes...",
-      success: "Changes saved successfully!",
+      loading: "Saving and publishing changes...",
+      success: "Changes saved! Your site is being published.",
       error: "Failed to save changes."
     });
   };

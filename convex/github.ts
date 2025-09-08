@@ -6,7 +6,6 @@ import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
 import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
-import matter from "gray-matter";
 import { createClerkClient } from "@clerk/backend";
 import { Id } from "./_generated/dataModel";
 
@@ -29,7 +28,7 @@ async function getOctokitFromUserId(userId: string) {
     try {
       await octokit.rest.users.getAuthenticated();
       return octokit;
-    } catch (apiError) {
+    } catch {
       throw new ConvexError("GitHub token validation failed. Token may be expired or invalid.");
     }
   } catch (error) {
@@ -764,6 +763,12 @@ export const parseAndSaveSettingsObject = action({
   handler: async (ctx, args) => {
     const octokit = await getUserOctokit(ctx);
 
+    // Set site status to PUBLISHING since CI/CD will automatically publish changes
+    await ctx.runMutation(api.documents.update, {
+      id: args.id,
+      publishStatus: "PUBLISHING",
+    });
+
     const contentResponse = await octokit.repos.getContent({
       owner: "hugity",
       repo: args.id,
@@ -783,6 +788,17 @@ export const parseAndSaveSettingsObject = action({
         content: Buffer.from(updatedConfig).toString("base64"),
         sha,
       });
+
+      // Try to dispatch deployment workflow to ensure publishing
+      try {
+        await ctx.runAction(api.github.dispatchDeployWorkflow, {
+          id: args.id
+        });
+      } catch (dispatchError) {
+        console.warn("Failed to dispatch deployment workflow:", dispatchError);
+        // Don't fail the entire operation if workflow dispatch fails
+        // The push trigger should still work
+      }
     } else {
       throw new Error("The path is not a file or does not exist.");
     }
@@ -862,6 +878,12 @@ export const parseAndSaveMultipleConfigFiles = action({
   handler: async (ctx, args) => {
     const octokit = await getUserOctokit(ctx);
 
+    // Set site status to PUBLISHING since CI/CD will automatically publish changes
+    await ctx.runMutation(api.documents.update, {
+      id: args.id,
+      publishStatus: "PUBLISHING",
+    });
+
     try {
       // Get the current commit SHA and tree SHA
       const { data: ref } = await octokit.git.getRef({
@@ -911,6 +933,17 @@ export const parseAndSaveMultipleConfigFiles = action({
         ref: "heads/main",
         sha: newCommit.sha,
       });
+
+      // Try to dispatch deployment workflow to ensure publishing
+      try {
+        await ctx.runAction(api.github.dispatchDeployWorkflow, {
+          id: args.id
+        });
+      } catch (dispatchError) {
+        console.warn("Failed to dispatch deployment workflow:", dispatchError);
+        // Don't fail the entire operation if workflow dispatch fails
+        // The push trigger should still work
+      }
 
       return args.configFiles.map(file => ({
         success: true,
@@ -975,6 +1008,12 @@ export const updateFileContent = action({
     if (args.filesToUpdate.length === 0) {
       throw new Error("No files to update");
     }
+
+    // Set site status to PUBLISHING since CI/CD will automatically publish changes
+    await ctx.runMutation(api.documents.update, {
+      id: args.id,
+      publishStatus: "PUBLISHING",
+    });
 
     try {
       // Get the current commit SHA and tree SHA
@@ -1047,6 +1086,17 @@ export const updateFileContent = action({
         ref: "heads/main",
         sha: newCommit.sha,
       });
+
+      // Try to dispatch deployment workflow to ensure publishing
+      try {
+        await ctx.runAction(api.github.dispatchDeployWorkflow, {
+          id: args.id
+        });
+      } catch (dispatchError) {
+        console.warn("Failed to dispatch deployment workflow:", dispatchError);
+        // Don't fail the entire operation if workflow dispatch fails
+        // The push trigger should still work
+      }
 
       console.log(`Successfully updated ${args.filesToUpdate.length} files in a single commit: ${commitMessage}`);
 
@@ -1190,7 +1240,7 @@ export const createMarkdownFileInRepo = action({
         if (!Array.isArray(response.data) && 'sha' in response.data) {
           sha = response.data.sha;
         }
-      } catch (error) {
+      } catch {
         // If not found, that's fine (we are creating)
         console.log("File not found, will create new:", decodedPath);
       }

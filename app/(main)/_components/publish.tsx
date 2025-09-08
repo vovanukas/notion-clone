@@ -219,7 +219,7 @@ export const Publish = ({initialData}: PublishProps) => {
             <Popover>
                 <PopoverTrigger asChild>
                     <Button size="sm" variant="ghost">
-                        Publish
+                        {data?.publishStatus === "PUBLISHING" ? "Publishing..." : "Publish"}
                         {data?.publishStatus === "PUBLISHED" && (
                             <Globe 
                                 className="text-sky-500 w-4 h-4 ml-2"

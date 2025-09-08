@@ -17,6 +17,7 @@ import { Spinner } from "@/components/spinner";
 import Image from "next/image";
 import { Loader } from "@/components/loader";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 interface DocumentIdPageProps {
     params: Promise<{
@@ -77,18 +78,27 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
     };
 
     const handleConfigSave = async () => {
-        try {
+        const promise = (async () => {
             setSavingConfig(true);
-            await saveMultipleConfigs({
-                id: documentId,
-                configFiles: configFiles,
-            });
-            setConfigError(null);
-        } catch (err) {
-            setConfigError("Failed to save configuration: " + (err as Error).message);
-        } finally {
-            setSavingConfig(false);
-        }
+            try {
+                await saveMultipleConfigs({
+                    id: documentId,
+                    configFiles: configFiles,
+                });
+                setConfigError(null);
+            } catch (err) {
+                setConfigError("Failed to save configuration: " + (err as Error).message);
+                throw err;
+            } finally {
+                setSavingConfig(false);
+            }
+        })();
+
+        toast.promise(promise, {
+            loading: "Saving configuration and publishing changes...",
+            success: "Configuration saved! Your site is being published.",
+            error: "Failed to save configuration."
+        });
     };
 
     const getEditorLanguage = (path: string) => {

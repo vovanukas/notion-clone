@@ -97,8 +97,8 @@ export const CoverImageModal = () => {
         })();
 
         toast.promise(promise, {
-            loading: "Uploading image...",
-            success: "Image uploaded successfully!",
+            loading: "Uploading image and publishing changes...",
+            success: "Image uploaded! Your site is being published.",
             error: "Failed to upload image."
         });
     };

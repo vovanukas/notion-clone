@@ -93,8 +93,8 @@ export const Cover = ({url, preview}: coverImageProps) => {
         })();
 
         toast.promise(promise, {
-            loading: "Removing cover image...",
-            success: "Cover image removed successfully!",
+            loading: "Removing cover image and publishing changes...",
+            success: "Cover image removed! Your site is being published.",
             error: "Failed to remove cover image."
         });
     }
