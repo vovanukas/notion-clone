@@ -86,6 +86,7 @@ export const create = mutation ({
     args: {
         title: v.string(),
         parentDocument: v.optional(v.id("documents")),
+        theme: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -104,6 +105,7 @@ export const create = mutation ({
             isPublished: false,
             buildStatus: "BUILDING",
             publishStatus: "UNPUBLISHED",
+            theme: args.theme,
         });
 
         return document;
@@ -282,6 +284,7 @@ export const update = mutation({
         buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
         publishStatus: v.optional(v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR"))),
         websiteUrl: v.optional(v.string()),
+        theme: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();

@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Upload, Image as ImageIcon, File } from "lucide-react";
+import { Trash2, Upload, Image as ImageIcon, File, Copy, Check } from "lucide-react";
 import Image from "next/image";
 
 registerPlugin(FilePondPluginFileEncode);
@@ -47,6 +47,12 @@ const formatFileSize = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+const trimAssetPath = (fullPath: string): string => {
+  // Extract filename from paths like "static/images/filename.png" or "assets/images/filename.png"
+  const filename = fullPath.split('/').pop() || fullPath;
+  return `images/${filename}`;
+};
+
 export default function AssetsPage() {
   const params = useParams();
   const documentId = params.documentId as Id<"documents">;
@@ -54,6 +60,7 @@ export default function AssetsPage() {
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   const document = useQuery(api.documents.getById, { documentId });
   const fetchAssetsTree = useAction(api.github.fetchAssetsTree);
@@ -116,6 +123,19 @@ export default function AssetsPage() {
       success: "Asset uploaded successfully!",
       error: "Failed to upload asset."
     });
+  };
+
+  const handleCopyPath = async (assetPath: string) => {
+    const trimmedPath = trimAssetPath(assetPath);
+    try {
+      await navigator.clipboard.writeText(trimmedPath);
+      setCopiedPath(trimmedPath);
+
+      // Reset copied state after 2 seconds
+      setTimeout(() => setCopiedPath(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy path:', error);
+    }
   };
 
   const handleDelete = async (assetPath: string) => {
@@ -270,9 +290,24 @@ export default function AssetsPage() {
                           {formatFileSize(asset.size || 0)}
                         </TableCell>
                         <TableCell>
-                          <code className="text-sm bg-muted px-2 py-1 rounded">
-                            {asset.path}
-                          </code>
+                          <div className="flex items-center gap-2">
+                            <code className="text-sm bg-muted px-2 py-1 rounded">
+                              {trimAssetPath(asset.path)}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleCopyPath(asset.path)}
+                              className="h-8 w-8 p-0"
+                              title="Copy path"
+                            >
+                              {copiedPath === trimAssetPath(asset.path) ? (
+                                <Check className="h-4 w-4 text-green-600" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <Button

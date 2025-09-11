@@ -34,7 +34,10 @@ export const ThemeSelectorModal = () => {
   };
 
   const handleCreateWebsite = () => {
-    const promise = create({ title: siteName }).then((documentId) => {
+    const promise = create({
+      title: siteName,
+      theme: templateSelector.selectedTemplate!
+    }).then((documentId) => {
       router.push(`/documents/${documentId}`);
       return createRepo({
         repoName: documentId,

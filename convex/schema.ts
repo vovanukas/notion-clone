@@ -14,6 +14,7 @@ export default defineSchema({
         buildStatus: v.optional(v.union(v.literal("BUILDING"), v.literal("BUILT"), v.literal("ERROR"))),
         publishStatus: v.optional(v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR"))),
         websiteUrl: v.optional(v.any()),
+        theme: v.optional(v.string()),
     })
     .index("by_user", ["userId"])
     .index("by_user_parent", ["userId", "parentDocument"]),
