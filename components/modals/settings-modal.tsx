@@ -39,26 +39,32 @@ export const SettingsModal = () => {
 
   return (
     <Dialog open={pageSettings.isOpen} onOpenChange={pageSettings.onClose}>
-      <DialogContent className="sm:max-w-[800px]">
+      <DialogContent className="w-[95vw] max-w-[400px] sm:max-w-[600px] md:max-w-[700px] lg:max-w-[800px] xl:max-w-[900px] h-[90vh] max-h-[600px] md:max-h-[700px] lg:max-h-[800px]">
         <DialogHeader>
           <DialogTitle>Page Settings</DialogTitle>
           <DialogDescription>
-            Modify your page frontmatter. Changes are saved automatically.
+            Modify your page frontmatter. Don&apos;t forget to save your changes in the Navigation Bar.
           </DialogDescription>
         </DialogHeader>
 
-        <div
-          className="grid gap-4 py-4 overflow-y-auto"
-          style={{ maxHeight: "400px" }}
-        >
-          <Editor
-            height="300px"
-            defaultLanguage="yaml"
-            language="yaml"
-            value={frontmatterString}
-            onChange={handleEditorChange}
-            theme="vs-dark"
-          />
+        <div className="flex-1 grid gap-4 py-4 overflow-hidden">
+          <div className="flex-1 min-h-0">
+            <Editor
+              height="100%"
+              defaultLanguage="yaml"
+              language="yaml"
+              value={frontmatterString}
+              onChange={handleEditorChange}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                wordWrap: 'on',
+                fontSize: 12,
+              }}
+            />
+          </div>
         </div>
 
         <DialogFooter>

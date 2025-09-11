@@ -218,7 +218,7 @@ export const Publish = ({initialData}: PublishProps) => {
         <div>
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button size="sm" variant="ghost">
+                    <Button size="sm" variant={data?.publishStatus === "ERROR" ? "destructive" : "ghost"}>
                         {data?.publishStatus === "PUBLISHING" ? "Publishing..." : "Publish"}
                         {data?.publishStatus === "PUBLISHED" && (
                             <Globe 
@@ -227,6 +227,9 @@ export const Publish = ({initialData}: PublishProps) => {
                         )}
                         {data?.publishStatus === "PUBLISHING" && (
                             <Spinner size="sm" />
+                        )}
+                        {data?.publishStatus === "ERROR" && (
+                            <AlertCircle className="text-white w-4 h-4 ml-2" />
                         )}
                     </Button>
                 </PopoverTrigger>

@@ -290,7 +290,7 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
                                         Saving...
                                     </>
                                 ) : (
-                                    "Save all changes"
+                                    "Save config changes"
                                 )}
                             </Button>
                         </div>
