@@ -50,7 +50,6 @@ export const Navbar = () => {
                         />
                     </>
                 )}
-                <ModeToggle />
             </div>
         </div>
     )

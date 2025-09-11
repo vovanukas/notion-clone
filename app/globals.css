@@ -193,3 +193,24 @@ body,
 .dark [data-filepond-item-state='processing-complete'] .filepond--item-panel {
   background-color: hsl(var(--primary));
 }
+
+/* BlockNote Link Styles - Dark Mode Only */
+.bn-inline-content a {
+  color: hsl(217.2 91.2% 69.8%) !important; /* blue for dark mode */
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  transition: all 0.2s ease-in-out;
+}
+
+.bn-inline-content a:visited {
+  color: hsl(280 65% 75%) !important; /* purple for visited links */
+}
+
+.bn-inline-content a:hover {
+  color: hsl(217.2 91.2% 79.8%) !important; /* lighter blue on hover */
+  text-decoration-thickness: 2px;
+}
+
+.bn-inline-content a:visited:hover {
+  color: hsl(280 65% 85%) !important; /* lighter purple on hover for visited links */
+}
