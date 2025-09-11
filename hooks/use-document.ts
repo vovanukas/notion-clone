@@ -4,6 +4,30 @@ import matter from "gray-matter";
 import { Id } from "@/convex/_generated/dataModel";
 import { findImageKey } from "@/lib/utils";
 
+// Comprehensive markdown preprocessing and normalization
+const preprocessMarkdown = (markdown: string): string => {
+  return markdown
+    // Handle all combinations of bullet points and task lists
+    // Using [*-] to match either * or - as list markers
+    // First, normalize all list items to have single line breaks
+    .replace(/(\n[*-] [^\n]+)\n\n([*-] )/g, '$1\n$2')
+    // Then specifically handle task list items
+    .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] )/g, '$1\n$2')
+    // Handle transition from bullet to task list
+    .replace(/(\n[*-] [^\n]+)\n\n([*-] \[[x ]\])/g, '$1\n$2')
+    // Handle transition from task list to bullet
+    .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] [^[])/g, '$1\n$2')
+    // Normalize all list markers to - for consistency
+    .replace(/\n\* /g, '\n- ')
+    .trim();
+};
+
+// Normalize markdown content to handle editor-specific changes that aren't real edits
+const normalizeMarkdown = (markdown: string): string => {
+  return preprocessMarkdown(markdown)
+    .trim();
+};
+
 type DocumentFrontmatter = {
   raw: string;  // Original YAML string
   parsed: Record<string, any>;  // Parsed object for app usage
@@ -63,10 +87,12 @@ export const useDocument = create<DocumentStore>((set, get) => ({
 
       set(state => {
         const newDocs = new Map(state.documents);
+        // Store both the original markdown and editor-ready version
+        const normalizedMarkdown = normalizeMarkdown(markdown);
         newDocs.set(path, {
           path,
           documentId,
-          markdown: markdown.trim(),
+          markdown: normalizedMarkdown,
           frontmatter: {
             raw,
             parsed: data
@@ -84,7 +110,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
         newDocs.set(path, {
           path,
           documentId,
-          markdown: content,  // Store original content on error
+          markdown: normalizeMarkdown(content),  // Normalize even error content
           frontmatter: {
             raw: "",
             parsed: {}
@@ -111,17 +137,18 @@ export const useDocument = create<DocumentStore>((set, get) => ({
       const doc = state.documents.get(path);
       if (!doc) return state;
 
-      // Normalize markdown content
-      const normalizedMarkdown = markdown.trim();
+      // Normalize both the new markdown and the stored markdown for comparison
+      const normalizedNewMarkdown = normalizeMarkdown(markdown);
+      const normalizedStoredMarkdown = normalizeMarkdown(doc.markdown);
       
-      // Only mark as edited if content actually changed
-      const isEdited = normalizedMarkdown !== doc.markdown;
+      // Only mark as edited if the normalized content actually changed
+      const hasActualChange = normalizedNewMarkdown !== normalizedStoredMarkdown;
 
       const newDocs = new Map(state.documents);
       newDocs.set(path, {
         ...doc,
-        markdown: normalizedMarkdown,
-        isEdited: doc.isEdited || isEdited
+        markdown: normalizedNewMarkdown,
+        isEdited: doc.isEdited || hasActualChange
       });
       return { documents: newDocs };
     });
@@ -187,7 +214,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
           imageKey
         });
         return { documents: newDocs };
-      } catch (err) {
+      } catch {
         // Keep the parsed value but mark as error
         const newDocs = new Map(state.documents);
         newDocs.set(path, {
@@ -273,3 +300,6 @@ export const useDocument = create<DocumentStore>((set, get) => ({
     console.groupEnd();
   }
 }));
+
+// Export the preprocessing functions for use in other components
+export { preprocessMarkdown, normalizeMarkdown };

@@ -21,6 +21,7 @@ import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { useEffect, useCallback, useRef } from "react";
+import { preprocessMarkdown } from "@/hooks/use-document";
 
 interface EditorProps {
     onChange: (value: string) => void;
@@ -81,34 +82,15 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
         uploadFile: handleUpload
     });
 
-    // Preprocess markdown to handle list and task list formatting issues
-    const preprocessMarkdown = (markdown: string): string => {
-        // Handle all combinations of bullet points and task lists
-        // Using [*-] to match either * or - as list markers
-        return markdown
-            // First, normalize all list items to have single line breaks
-            .replace(/(\n[*-] [^\n]+)\n\n([*-] )/g, '$1\n$2')
-            // Then specifically handle task list items
-            .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] )/g, '$1\n$2')
-            // Handle transition from bullet to task list
-            .replace(/(\n[*-] [^\n]+)\n\n([*-] \[[x ]\])/g, '$1\n$2')
-            // Handle transition from task list to bullet
-            .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] [^[])/g, '$1\n$2')
-            // Normalize all list markers to - for consistency
-            .replace(/\n\* /g, '\n- ');
-    };
-
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
                 console.log('📝 Initial markdown:', initialContent);
-                // Preprocess the markdown before parsing
-                const processedMarkdown = preprocessMarkdown(initialContent);
-                const blocks = await editor.tryParseMarkdownToBlocks(processedMarkdown);
+                // Content is already preprocessed by the document store
+                const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
                 console.log('🔄 Parsed blocks:', blocks);
                 editor.replaceBlocks(editor.document, blocks);
-                const newBlocks = editor.document;
-                console.log('📄 Editor blocks after replace:', newBlocks);
+                console.log('📄 Editor blocks after replace:', editor.document);
                 isInitialMount.current = false;
             }
             parseAndSetContent();
