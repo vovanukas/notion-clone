@@ -277,6 +277,40 @@ export const publishPage = action({
       }))
 
     try {
+      // Check if GitHub Pages is enabled, create if not
+      try {
+        await octokit.repos.getPages({
+          owner: "hugity",
+          repo: args.id
+        });
+        console.log("GitHub Pages already enabled");
+      } catch (error: any) {
+        if (error.status === 404) {
+          console.log("GitHub Pages not enabled, creating...");
+          try {
+            await octokit.repos.createPagesSite({
+              owner: "hugity",
+              repo: args.id,
+              build_type: "workflow",
+            });
+
+            await octokit.repos.updateInformationAboutPagesSite({
+              owner: "hugity",
+              repo: args.id,
+              https_enforced: true,
+            });
+
+            console.log("GitHub Pages site created successfully");
+          } catch (createError) {
+            console.error("Failed to create GitHub Pages site:", createError);
+            throw new Error("Failed to enable GitHub Pages. Please try again.");
+          }
+        } else {
+          console.error("Error checking GitHub Pages status:", error);
+          throw error;
+        }
+      }
+
       // First try to find any existing deployment workflow files
       const workflowFiles = await octokit.repos.getContent({
         owner: "hugity",
