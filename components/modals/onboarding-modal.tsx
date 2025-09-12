@@ -56,7 +56,7 @@ export const OnboardingModal = () => {
                         Welcome to Hugity! 🎉
                     </DialogTitle>
                     <DialogDescription className="text-sm sm:text-base mt-2">
-                        Let's get you started with a quick overview of how to create and manage your websites.
+                        Let&apos;s get you started with a quick overview of how to create and manage your websites.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -77,9 +77,9 @@ export const OnboardingModal = () => {
                                 </p>
                                 <div className="mt-2 sm:mt-4 text-xs text-gray-400 space-y-1 hidden sm:block">
                                     <p>Examples:</p>
-                                    <p>• YouTube: &lt;iframe src="https://www.youtube.com/embed/VIDEO_ID"&gt;</p>
-                                    <p>• Vimeo: &lt;iframe src="https://player.vimeo.com/video/VIDEO_ID"&gt;</p>
-                                    <p>• Local video: &lt;video src="/path-to-video.mp4"&gt;</p>
+                                    <p>• YouTube: &lt;iframe src=&quot;https://www.youtube.com/embed/VIDEO_ID&quot;&gt;</p>
+                                    <p>• Vimeo: &lt;iframe src=&quot;https://player.vimeo.com/video/VIDEO_ID&quot;&gt;</p>
+                                    <p>• Local video: &lt;video src=&quot;/path-to-video.mp4&quot;&gt;</p>
                                 </div>
                             </div>
                         </div>
