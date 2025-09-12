@@ -5,10 +5,25 @@ import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/clerk-react";
 import { PlusCircleIcon } from "lucide-react";
 import { useThemeSelector } from "@/hooks/use-theme-selector";
+import { useOnboarding } from "@/hooks/use-onboarding";
+import { useEffect } from "react";
 
 const DocumentsPage = () => {
     const { user } = useUser();
     const themeSelector = useThemeSelector();
+    const onboarding = useOnboarding();
+
+    // Check if user needs onboarding
+    useEffect(() => {
+        if (user && !user.publicMetadata?.onboardingComplete) {
+            // Small delay to ensure UI is ready
+            const timer = setTimeout(() => {
+                onboarding.onOpen();
+            }, 1000);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [user, onboarding]);
 
     const onCreate = () => {
         themeSelector.onOpen();

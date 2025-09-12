@@ -11,6 +11,30 @@ import { Id } from "./_generated/dataModel";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
 
+export const completeOnboarding = action({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    
+    if (!identity) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    try {
+      await clerkClient.users.updateUser(identity.subject, {
+        publicMetadata: {
+          onboardingComplete: true,
+        },
+      });
+      
+      return { success: true };
+    } catch (error) {
+      console.error("Error updating user metadata:", error);
+      throw new ConvexError("Failed to update onboarding status");
+    }
+  },
+});
+
 async function getOctokitFromUserId(userId: string) {
   try {
     const user = await clerkClient.users.getUser(userId);
