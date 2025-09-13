@@ -10,14 +10,70 @@ export function isImagePath(path: string): boolean {
   return imageExtensions.some(ext => path.toLowerCase().endsWith(ext));
 }
 
-export function findImageKey(changedFile: { [key: string]: any } | null | undefined) {
-  if (!changedFile) return null;
+// Recursively extract all keys from a nested object
+export function getAllKeys(obj: { [key: string]: any } | null | undefined, prefix: string = ''): string[] {
+  if (!obj || typeof obj !== 'object') return [];
 
-  // Look through all properties for an image path
-  for (const [key, value] of Object.entries(changedFile)) {
-    if (typeof value === 'string' && isImagePath(value)) {
-      return key;
+  const keys: string[] = [];
+
+  for (const [key, value] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    keys.push(fullKey);
+
+    // If the value is an object (but not an array), recursively get its keys
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      keys.push(...getAllKeys(value, fullKey));
     }
   }
-  return null;
+
+  return keys;
+}
+
+// Get a nested value from an object using dot notation
+export function getNestedValue(obj: { [key: string]: any } | null | undefined, key: string): any {
+  if (!obj || !key) return undefined;
+
+  // If the key doesn't contain dots, it's a simple property access
+  if (!key.includes('.')) {
+    return obj[key];
+  }
+
+  // Split the key by dots and traverse the object
+  const keys = key.split('.');
+  let current = obj;
+
+  for (const k of keys) {
+    if (current && typeof current === 'object' && k in current) {
+      current = current[k];
+    } else {
+      return undefined;
+    }
+  }
+
+  return current;
+}
+
+// Recursively find an image key in nested objects
+export function findImageKey(changedFile: { [key: string]: any } | null | undefined): string | null {
+  if (!changedFile) return null;
+
+  // Helper function to recursively search for image paths
+  function searchForImageKey(obj: { [key: string]: any }, prefix: string = ''): string | null {
+    for (const [key, value] of Object.entries(obj)) {
+      const fullKey = prefix ? `${prefix}.${key}` : key;
+
+      if (typeof value === 'string' && isImagePath(value)) {
+        return fullKey;
+      }
+
+      // If the value is an object (but not an array), recursively search it
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const nestedResult = searchForImageKey(value, fullKey);
+        if (nestedResult) return nestedResult;
+      }
+    }
+    return null;
+  }
+
+  return searchForImageKey(changedFile);
 }

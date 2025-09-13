@@ -2,7 +2,7 @@ import { create } from "zustand";
 import yaml from "js-yaml";
 import matter from "gray-matter";
 import { Id } from "@/convex/_generated/dataModel";
-import { findImageKey } from "@/lib/utils";
+import { findImageKey, getAllKeys } from "@/lib/utils";
 
 // Comprehensive markdown preprocessing and normalization
 const preprocessMarkdown = (markdown: string): string => {
@@ -293,7 +293,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
     console.log('Documents:', Array.from(state.documents.entries()).map(([path, doc]) => ({
       path,
       isEdited: doc.isEdited,
-      frontmatterKeys: Object.keys(doc.frontmatter.parsed),
+      frontmatterKeys: getAllKeys(doc.frontmatter.parsed),
       markdownPreview: doc.markdown,
       frontmatterRaw: doc.frontmatter.raw
     })));

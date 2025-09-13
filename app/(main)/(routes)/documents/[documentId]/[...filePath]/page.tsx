@@ -13,7 +13,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useDocument } from "@/hooks/use-document";
 import Image from "next/image";
-import { isImagePath } from "@/lib/utils";
+import { isImagePath, getNestedValue } from "@/lib/utils";
 
 interface FilePathPageProps {
     params: Promise<{
@@ -23,28 +23,51 @@ interface FilePathPageProps {
 }
 
 // Helper function to find and validate image URLs
-const findCoverImage = async (metadata: any, documentId: string) => {
+const findCoverImage = async (metadata: any, documentId: string, theme?: string) => {
     if (!metadata) return null;
     
-    // Look through all metadata values for an image path
-    for (const [, value] of Object.entries(metadata)) {
-        if (typeof value === 'string' && isImagePath(value)) {
-            // Try both paths
-            const paths = [
-                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/${value}`,
-                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/assets/${value}`
-            ];
+    // Helper function to recursively search for image paths
+    const findImagePaths = (obj: any): string[] => {
+        const paths: string[] = [];
 
-            // Try each path
-            for (const path of paths) {
-                try {
-                    const response = await fetch(path, { method: 'HEAD' });
-                    if (response.ok) {
-                        return path;
-                    }
-                } catch (error) {
-                    console.log(`Failed to check path: ${path}`, error);
+        for (const [, value] of Object.entries(obj)) {
+            if (typeof value === 'string' && isImagePath(value)) {
+                paths.push(value);
+            } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+                paths.push(...findImagePaths(value));
+            }
+        }
+
+        return paths;
+    };
+
+    const imagePaths = findImagePaths(metadata);
+
+    // Try each image path found
+    for (const imagePath of imagePaths) {
+        // Build possible paths array
+        const paths = [
+            `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/static/${imagePath}`,
+            `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/assets/${imagePath}`
+        ];
+
+        // Add theme-specific paths if theme is available
+        if (theme) {
+            paths.push(
+                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/themes/${theme}/static/${imagePath}`,
+                `https://raw.githubusercontent.com/hugity/${documentId}/refs/heads/main/themes/${theme}/static/images/${imagePath}`
+            );
+        }
+
+        // Try each path
+        for (const path of paths) {
+            try {
+                const response = await fetch(path, { method: 'HEAD' });
+                if (response.ok) {
+                    return path;
                 }
+            } catch (error) {
+                console.log(`Failed to check path: ${path}`, error);
             }
         }
     }
@@ -114,14 +137,14 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             return;
         }
 
-        const imageValue = currentDocument.frontmatter.parsed[currentDocument.imageKey];
+        const imageValue = getNestedValue(currentDocument.frontmatter.parsed, currentDocument.imageKey);
         if (!imageValue) {
             setCoverImageUrl(null);
             return;
         }
 
         // Only update URL if image exists
-        findCoverImage(currentDocument.frontmatter.parsed, documentId).then(url => {
+        findCoverImage(currentDocument.frontmatter.parsed, documentId, document?.theme).then(url => {
             if (url !== coverImageUrl) {
                 setCoverImageUrl(url);
             }
@@ -132,7 +155,8 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
         // Watch for both the presence of imageKey and the entire frontmatter
         // This ensures we update when keys are removed
         currentDocument?.imageKey,
-        currentDocument?.frontmatter.parsed
+        currentDocument?.frontmatter.parsed,
+        document?.theme
     ]);
 
     const onChange = useCallback((markdown: string) => {
