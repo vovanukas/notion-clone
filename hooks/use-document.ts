@@ -80,7 +80,12 @@ export const useDocument = create<DocumentStore>((set, get) => ({
       const { data, content: markdown } = matter(content);
       
       // Convert frontmatter back to YAML for editing
-      const raw = Object.keys(data).length > 0 ? yaml.dump(data) : '';
+      const raw = Object.keys(data).length > 0 ? yaml.dump(data, {
+        lineWidth: -1,  // Disable line wrapping
+        noRefs: true,   // Disable references
+        quotingType: '"', // Use double quotes for strings
+        forceQuotes: false // Don't force quotes for simple strings
+      }) : '';
 
       // Find image key in frontmatter
       const imageKey = findImageKey(data);
@@ -197,8 +202,13 @@ export const useDocument = create<DocumentStore>((set, get) => ({
       if (!doc) return state;
 
       try {
-        // Convert to YAML
-        const raw = yaml.dump(parsed);
+        // Convert to YAML with proper formatting options
+        const raw = yaml.dump(parsed, {
+          lineWidth: -1,  // Disable line wrapping
+          noRefs: true,   // Disable references
+          quotingType: '"', // Use double quotes for strings
+          forceQuotes: false // Don't force quotes for simple strings
+        });
         
         // Find image key in new frontmatter
         const imageKey = findImageKey(parsed);
@@ -277,7 +287,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
 
     // If there's frontmatter, wrap it in --- delimiters
     const frontmatterSection = doc.frontmatter.raw 
-      ? `---\n${doc.frontmatter.raw}---\n` 
+      ? `---\n${doc.frontmatter.raw.trim()}\n---\n`
       : '';
 
     return {

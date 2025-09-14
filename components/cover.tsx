@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, deleteNestedValue } from "@/lib/utils";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, X } from "lucide-react";
@@ -60,9 +60,8 @@ export const Cover = ({url, preview}: coverImageProps) => {
                     imagePath: `images/${imagePath}`
                 });
 
-                // Update frontmatter to remove image
-                const newFrontmatter = { ...doc.frontmatter.parsed };
-                delete newFrontmatter[imageKey];
+                // Update frontmatter to clear image value (keep the key structure)
+                const newFrontmatter = deleteNestedValue(doc.frontmatter.parsed, imageKey, true);
                 
                 // Update store first, then prepare for GitHub
                 updateFrontmatterParsed(filePathString, newFrontmatter);

@@ -11,6 +11,7 @@ import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
 import { usePageSettings } from "@/hooks/use-page-settings";
 import { Doc } from "@/convex/_generated/dataModel";
+import { isImagePath } from "@/lib/utils";
 
 interface ToolbarProps {
     initialData: Doc<"documents"> & { [key: string]: any };
@@ -19,40 +20,39 @@ interface ToolbarProps {
     showIconPicker?: boolean;
 }
 
-// Helper function to detect if there's an image in the metadata
+// Helper function to detect if there's an image in the metadata (including nested)
 const hasImageInMetadata = (data: Doc<"documents"> & { [key: string]: any }): boolean => {
-    // Common image key patterns
-    const imageKeys = [
-        'featured_image', 'image', 'cover', 'coverImage', 'cover_image',
-        'thumbnail', 'hero_image', 'banner', 'photo', 'picture'
-    ];
-    
-    // Check for exact key matches
-    for (const key of imageKeys) {
-        if (data[key] && typeof data[key] === 'string' && data[key].trim()) {
-            return true;
-        }
-    }
-    
-    // Check for any key that contains image-like patterns and has a value that looks like an image path
-    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff)$/i;
-    const imagePaths = /\/(images?|assets|media|static|public)\//i;
-    
-    for (const [key, value] of Object.entries(data)) {
-        if (typeof value === 'string' && value.trim()) {
-            // Check if the value looks like an image path
-            if (imageExtensions.test(value) || imagePaths.test(value)) {
-                return true;
-            }
-            // Check if the key name suggests it's an image
-            if (key.toLowerCase().includes('image') || key.toLowerCase().includes('cover') || 
-                key.toLowerCase().includes('photo') || key.toLowerCase().includes('picture')) {
-                return true;
+    // Recursive function to search for image paths in nested objects
+    const searchForImages = (obj: any): boolean => {
+        if (!obj || typeof obj !== 'object') return false;
+
+        for (const [key, value] of Object.entries(obj)) {
+            if (typeof value === 'string' && value.trim()) {
+                // Check if the value looks like an image path using the utility function
+                if (isImagePath(value)) {
+                    return true;
+                }
+
+                // Check if the key name suggests it's an image
+                const lowerKey = key.toLowerCase();
+                if ((lowerKey.includes('image') || lowerKey.includes('cover') ||
+                     lowerKey.includes('photo') || lowerKey.includes('picture') ||
+                     lowerKey.includes('thumbnail') || lowerKey.includes('hero') ||
+                     lowerKey.includes('banner')) && value.trim()) {
+                    return true;
+                }
+            } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+                // Recursively search nested objects
+                if (searchForImages(value)) {
+                    return true;
+                }
             }
         }
-    }
+
+        return false;
+    };
     
-    return false;
+    return searchForImages(data);
 };
 
 export const Toolbar = ({
