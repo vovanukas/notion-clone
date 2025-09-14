@@ -242,7 +242,7 @@ jobs:
         webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
         webhook_auth_type: "bearer"
         webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "buildStatus": "BUILT", "publishStatus": "UNPUBLISHED" }'
+        data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHING" }'
 
     - name: Notify on failure
       if: failure()

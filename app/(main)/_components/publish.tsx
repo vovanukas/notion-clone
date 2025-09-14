@@ -69,8 +69,10 @@ export const Publish = ({initialData}: PublishProps) => {
 
     const renderPublishContent = () => {
         const publishStatus = data?.publishStatus;
+        const buildStatus = data?.buildStatus;
 
-        if (publishStatus === "PUBLISHING") {
+        // Show publishing state if actively publishing OR if still building (since build leads to auto-publish)
+        if (publishStatus === "PUBLISHING" || buildStatus === "BUILDING") {
             // If we have a URL, show it's updating an existing site
             if (data?.websiteUrl) {
                 return (
@@ -78,7 +80,7 @@ export const Publish = ({initialData}: PublishProps) => {
                         <div className="flex items-center gap-x-2">
                             <Spinner/>
                             <p className="text-xs font-medium">
-                                Updating your website...
+                                {buildStatus === "BUILDING" ? "Publishing your website..." : "Updating your website..."}
                             </p>
                         </div>
                         <div className="flex items-center">
@@ -112,14 +114,14 @@ export const Publish = ({initialData}: PublishProps) => {
                 );
             }
 
-            // Initial publish - no URL yet
+            // Initial publish/build - no URL yet
             return (
                 <div className="flex flex-col items-center justify-center space-y-4">
                     <div className="h-12 w-12 flex items-center justify-center">
                         <Loader size="sm" variant="accent" />
                     </div>
                     <p className="text-sm font-medium text-center">
-                        Publishing your website...
+                        {buildStatus === "BUILDING" ? "Creating and publishing your website..." : "Publishing your website..."}
                     </p>
                     <p className="text-xs text-muted-foreground text-center">
                         This may take a few minutes
@@ -219,13 +221,13 @@ export const Publish = ({initialData}: PublishProps) => {
             <Popover>
                 <PopoverTrigger asChild>
                     <Button size="sm" variant={data?.publishStatus === "ERROR" ? "destructive" : "ghost"}>
-                        {data?.publishStatus === "PUBLISHING" ? "Publishing..." : "Publish"}
+                        {(data?.publishStatus === "PUBLISHING" || data?.buildStatus === "BUILDING") ? "Publishing..." : "Publish"}
                         {data?.publishStatus === "PUBLISHED" && (
                             <Globe 
                                 className="text-sky-500 w-4 h-4 ml-2"
                             />
                         )}
-                        {data?.publishStatus === "PUBLISHING" && (
+                        {(data?.publishStatus === "PUBLISHING" || data?.buildStatus === "BUILDING") && (
                             <Spinner size="sm" />
                         )}
                         {data?.publishStatus === "ERROR" && (
