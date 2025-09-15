@@ -166,8 +166,10 @@ export const createRepo = action({
         secretName: 'CONVEX_SITE_URL'
       }))
 
-      // Add a user as a collaborator
+      // Auto-accept collaboration flow: App invites user, user immediately accepts
       const user = await clerkClient.users.getUser(identity.subject);
+
+      // Step 1: App adds user as collaborator (creates invitation)
       await octokit.repos.addCollaborator({
         owner: "hugity",
         repo: args.repoName,
@@ -262,6 +264,35 @@ jobs:
         message: "Add Hugo setup workflow",
         content: Buffer.from(workflowContent).toString("base64"), // Encode to base64
       });
+
+      // Step 2: User immediately accepts their own invitation (before they see email)
+      const userOctokit = await getUserOctokit(ctx);
+
+      const invitations = await userOctokit.repos.listInvitationsForAuthenticatedUser();
+      console.log("Invitations:", invitations.data);
+      const targetInvitation = invitations.data.find(inv =>
+        inv.repository.name === args.repoName
+      );
+
+      if (targetInvitation) {
+        await userOctokit.repos.acceptInvitationForAuthenticatedUser({
+          invitation_id: targetInvitation.id
+        });
+        console.log(`Auto-accepted collaboration invitation for ${args.repoName}`);
+
+        // CRITICAL: Immediately unwatch the repository to prevent workflow notifications
+        try {
+          await userOctokit.activity.setRepoSubscription({
+            owner: "hugity",
+            repo: args.repoName,
+            subscribed: false,
+            ignored: true
+          });
+          console.log(`User unsubscribed from notifications for ${args.repoName}`);
+        } catch (unsubscribeError) {
+          console.warn("Failed to unsubscribe from repository notifications:", unsubscribeError);
+        }
+      }
 
       return repoUrl;
     } catch (error) {
@@ -819,6 +850,11 @@ export const parseAndSaveSettingsObject = action({
     configPath: v.string(), // Added configPath
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
 
     // Set site status to PUBLISHING since CI/CD will automatically publish changes
@@ -934,6 +970,11 @@ export const parseAndSaveMultipleConfigFiles = action({
     })),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
 
     // Set site status to PUBLISHING since CI/CD will automatically publish changes
@@ -1061,6 +1102,11 @@ export const updateFileContent = action({
     filesToUpdate: v.any(),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
 
     if (args.filesToUpdate.length === 0) {
@@ -1172,6 +1218,11 @@ export const uploadImage = action({
     filename: v.string(),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
 
     try {
@@ -1196,6 +1247,23 @@ export const uploadImage = action({
 export const deleteRepo = action({
   args: { id: v.id("documents") },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
+    const userId = identity.subject;
+
+    const existingDocument = await ctx.runQuery(api.documents.getById, { documentId: args.id });
+
+    if (!existingDocument) {
+      throw new Error("Not found");
+    }
+
+    if (existingDocument.userId !== userId) {
+      throw new Error ("Unauthorized");
+    }
+
     const octokit = await getAppOctokit(ctx, args.id);
 
     try {
@@ -1281,6 +1349,11 @@ export const createMarkdownFileInRepo = action({
     content: v.string(),  // markdown content (frontmatter + body)
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
 
     try {
@@ -1435,6 +1508,11 @@ export const renamePathInRepo = action({
     itemType: v.union(v.literal("file"), v.literal("folder")),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+
     const octokit = await getUserOctokit(ctx);
     const owner = "hugity";
     const repo = args.id;
