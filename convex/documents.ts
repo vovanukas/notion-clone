@@ -82,6 +82,32 @@ export const getWebsites = query({
     }
 })
 
+export const getUserSiteCount = query({
+    handler: async (ctx) => {
+        const identity = await ctx.auth.getUserIdentity();
+
+        if (!identity) {
+            return 0; // Return 0 for unauthenticated users instead of throwing
+        }
+
+        const userId = identity.subject;
+
+        const documents = await ctx.db
+            .query("documents")
+            .withIndex("by_user_parent", (q) =>
+                q
+                    .eq("userId", userId)
+                    .eq("parentDocument", undefined)
+            )
+            .filter((q) =>
+                q.eq(q.field("isArchived"), false)
+            )
+            .collect();
+
+        return documents.length;
+    }
+})
+
 export const create = mutation ({
     args: {
         title: v.string(),
