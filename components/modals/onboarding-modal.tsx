@@ -63,35 +63,12 @@ export const OnboardingModal = () => {
                 <div className="px-4 sm:px-6 flex-1 overflow-y-auto">
                     {/* Video Container */}
                     <div className="relative aspect-video bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden mb-4 sm:mb-6">
-                        {/* Replace this div with your actual video component/embed */}
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            <div className="text-center px-4">
-                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                                    <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M8 5v14l11-7z"/>
-                                    </svg>
-                                </div>
-                                <p className="text-xs sm:text-sm font-medium">Your onboarding video will appear here</p>
-                                <p className="text-xs text-gray-400 mt-1 hidden sm:block">
-                                    Replace this with iframe, video tag, or your preferred video solution
-                                </p>
-                                <div className="mt-2 sm:mt-4 text-xs text-gray-400 space-y-1 hidden sm:block">
-                                    <p>Examples:</p>
-                                    <p>• YouTube: &lt;iframe src=&quot;https://www.youtube.com/embed/VIDEO_ID&quot;&gt;</p>
-                                    <p>• Vimeo: &lt;iframe src=&quot;https://player.vimeo.com/video/VIDEO_ID&quot;&gt;</p>
-                                    <p>• Local video: &lt;video src=&quot;/path-to-video.mp4&quot;&gt;</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Example of how you might embed a video:
                         <iframe
-                            src="https://www.youtube.com/embed/YOUR_VIDEO_ID"
+                            src="https://www.youtube.com/embed/VXWjYOb_yMs"
                             className="w-full h-full"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                             allowFullScreen
                         />
-                        */}
                     </div>
                 </div>
 
