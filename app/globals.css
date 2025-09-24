@@ -88,6 +88,23 @@ body,
     @apply bg-background text-foreground;
     overscroll-behavior: none;
   }
+
+  /* Prevent overscroll/bounce behavior on all scrollable elements */
+  html {
+    overscroll-behavior: none;
+  }
+
+  /* Target the main scrollable areas */
+  main {
+    overscroll-behavior: none;
+  }
+
+  /* Prevent overscroll on any element with overflow auto or scroll */
+  *[class*="overflow-y-auto"],
+  *[class*="overflow-auto"],
+  *[class*="overflow-scroll"] {
+    overscroll-behavior: none;
+  }
 }
 
 @layer base {
