@@ -37,23 +37,30 @@ export const useTemplateSchema = (theme: string | undefined) => {
 export const getSectionsFromSchema = (schema: any, uiSchema?: any): SettingsSection[] => {
   if (!schema?.properties) return [];
 
-  const sections = Object.entries(schema.properties).map(([key, value]: [string, any]) => ({
-    key,
-    title: value.title || key,
-  }));
+  // Filter out hidden sections first
+  const visibleSections = Object.entries(schema.properties)
+    .filter(([key]: [string, any]) => {
+      // Check if this section is hidden in UI schema
+      const sectionUISchema = uiSchema?.[key];
+      return sectionUISchema?.['ui:widget'] !== 'hidden';
+    })
+    .map(([key, value]: [string, any]) => ({
+      key,
+      title: value.title || key,
+    }));
 
   // If UI schema has a root-level ui:order, use it to order the sections
   if (uiSchema?.['ui:order']) {
     const orderedKeys = uiSchema['ui:order'];
-    const sectionsMap = new Map(sections.map(section => [section.key, section]));
+    const sectionsMap = new Map(visibleSections.map(section => [section.key, section]));
 
-    // Return sections in the order specified by ui:order
+    // Return sections in the order specified by ui:order (only visible ones)
     const orderedSections = orderedKeys
       .map((key: string) => sectionsMap.get(key))
       .filter(Boolean); // Remove any undefined entries
 
-    // Add any sections not in ui:order at the end
-    const unorderedSections = sections.filter(section =>
+    // Add any visible sections not in ui:order at the end
+    const unorderedSections = visibleSections.filter(section =>
       !orderedKeys.includes(section.key)
     );
 
@@ -61,5 +68,5 @@ export const getSectionsFromSchema = (schema: any, uiSchema?: any): SettingsSect
   }
 
   // Fallback to schema property order (may not be reliable)
-  return sections;
+  return visibleSections;
 };
