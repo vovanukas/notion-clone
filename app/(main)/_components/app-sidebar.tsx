@@ -1,22 +1,25 @@
 "use client";
 
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
 import { useParams, useRouter } from "next/navigation";
 import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
+import { useSettings, useTemplateSchema, getSectionsFromSchema } from "@/hooks/use-settings";
 import { toast } from "sonner";
 import {
   File as FileIcon,
   Folder as FolderIcon,
   Search,
-  Home,
+  Settings,
   Trash,
   MoreHorizontal,
   Edit,
   Image as ImageIcon,
   Plus,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -31,6 +34,11 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
 import { WebsiteSwitcher } from "./website-switcher";
@@ -56,16 +64,23 @@ interface TreeNode {
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError, resetSidebarState } = useAppSidebar();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const search = useSearch();
   const router = useRouter();
   const params = useParams();
 
-  const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
-  const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
   );
+
+  // Settings management
+  const { currentSection, setCurrentSection } = useSettings();
+  const template = useTemplateSchema(document?.theme);
+  const availableSections = getSectionsFromSchema(template?.settingsJsonSchema, template?.settingsUiSchema);
+
+  const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
+  const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const deleteFile = useAction(api.github.deleteFile);
   const renameGithubPath = useAction(api.github.renamePathInRepo);
 
@@ -110,6 +125,31 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       setIsLoading(false);
     }
   }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
+
+  // Simple hash change handler for settings navigation
+  useEffect(() => {
+    const updateSettingsState = () => {
+      const hash = window.location.hash.slice(1);
+      const isOnSettingsPage = window.location.pathname.includes('/settings');
+
+      if (isOnSettingsPage) {
+        setIsSettingsOpen(true);
+        setCurrentSection(hash || null);
+      } else {
+        setIsSettingsOpen(false);
+        setCurrentSection(null);
+      }
+    };
+
+    window.addEventListener('hashchange', updateSettingsState);
+    window.addEventListener('popstate', updateSettingsState);
+    updateSettingsState(); // Initial state
+
+    return () => {
+      window.removeEventListener('hashchange', updateSettingsState);
+      window.removeEventListener('popstate', updateSettingsState);
+    };
+  }, [setCurrentSection]);
 
   useEffect(() => {
     async function loadFileTree() {
@@ -298,6 +338,37 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     }
   }, [params.documentId, renameGithubPath, refreshTree, router, params.path, setIsLoading]);
 
+  // Simplified scroll function
+  const scrollToSection = useCallback((sectionKey: string) => {
+    setTimeout(() => {
+      const element = window.document.getElementById(`root_${sectionKey}__title`);
+      if (element) {
+        const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({ top: elementPosition - 100, behavior: 'smooth' });
+      }
+    }, 100);
+  }, []);
+
+  // Handle settings navigation
+  const handleSettingsNavigation = useCallback((sectionKey: string | null) => {
+    if (!params.documentId) return;
+
+    const settingsUrl = `/documents/${params.documentId}/settings`;
+    const isOnSettingsPage = window.location.pathname.includes('/settings');
+
+    if (sectionKey) {
+      const urlWithHash = `${settingsUrl}#${sectionKey}`;
+      if (isOnSettingsPage) {
+        window.location.hash = sectionKey;
+        scrollToSection(sectionKey);
+      } else {
+        router.push(urlWithHash);
+      }
+    } else {
+      router.push(settingsUrl);
+    }
+  }, [params.documentId, router, scrollToSection]);
+
   const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
 
@@ -387,15 +458,65 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         {params.documentId && (
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
-            <Item
-              label="Home"
-              icon={Home}
-              onClick={() => {
-                if (params.documentId) {
-                  router.push(`/documents/${params.documentId}`);
-                }
-              }}
-            />
+            <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+              <CollapsibleTrigger asChild>
+                <div
+                  className={`group min-h-[27px] text-sm py-1 pr-3 pl-3 w-full hover:bg-primary/5 flex items-center text-muted-foreground font-medium cursor-pointer ${
+                    isSettingsOpen ? "bg-primary/5 text-primary" : ""
+                  }`}
+                >
+                  <Settings className="shrink-0 h-[18px] w-[18px] mr-2 text-muted-foreground" />
+                  <span>Settings</span>
+                  <div className="ml-auto">
+                    {!template && document?.theme ? (
+                      <Spinner size="sm" />
+                    ) : isSettingsOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    )}
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="pl-8 py-1 space-y-1">
+                  {availableSections.length > 0 ? (
+                    <>
+                      {/* All Settings Option */}
+                      <div
+                        className={`min-h-[27px] text-sm py-1 pr-3 w-full hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
+                          !currentSection && window.location.pathname.includes('/settings')
+                            ? "bg-primary/5 text-primary"
+                            : "text-muted-foreground"
+                        }`}
+                        onClick={() => handleSettingsNavigation(null)}
+                      >
+                        <span>All Settings</span>
+                      </div>
+
+                      {/* Individual Sections */}
+                      {availableSections.map((section) => (
+                        <div
+                          key={section.key}
+                          className={`min-h-[27px] text-sm py-1 pr-3 w-full hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
+                            currentSection === section.key
+                              ? "bg-primary/5 text-primary"
+                              : "text-muted-foreground"
+                          }`}
+                          onClick={() => handleSettingsNavigation(section.key)}
+                        >
+                          <span>{section.title}</span>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="min-h-[27px] text-sm py-1 pr-3 w-full flex items-center text-muted-foreground/50 font-medium">
+                      <span>No settings available</span>
+                    </div>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
             <Item
               label="Assets"
               icon={ImageIcon}
