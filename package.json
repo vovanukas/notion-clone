@@ -54,6 +54,7 @@
     "filepond-plugin-image-preview": "^4.6.12",
     "filepond-plugin-image-resize": "^2.0.10",
     "filepond-plugin-image-transform": "^3.8.7",
+    "flat": "^6.0.1",
     "framer-motion": "^12.5.0",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
@@ -71,6 +72,7 @@
     "react-hook-form": "^7.54.2",
     "react-textarea-autosize": "^8.5.5",
     "shadcn-dropzone": "^0.2.1",
+    "smol-toml": "^1.4.2",
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
@@ -79,6 +81,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@types/flat": "^5.0.5",
     "@types/libsodium-wrappers": "^0.7.14",
     "@types/node": "^20",
     "@types/react": "^18",
