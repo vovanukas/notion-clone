@@ -86,7 +86,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     
     // If we're not on a settings page and currentSection is set, clear it
     if (!isOnSettingsPage && currentSection) {
-      console.log('🧹 Clearing currentSection - navigated away from settings to:', pathname);
       setCurrentSection(null);
     }
   }, [pathname, currentSection, setCurrentSection]);
@@ -501,7 +500,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                     )}
                   </div>
                 </CollapsibleTrigger>
-              </div>
+                </div>
               <CollapsibleContent>
                 <div className="pl-8 py-1 space-y-1">
                   {availableSections.length > 0 ? (
@@ -518,13 +517,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                           onClick={() => handleSettingsNavigation(section.key)}
                         >
                           <span>{section.title}</span>
-                        </div>
+                  </div>
                       ))}
                     </>
                   ) : (
                     <div className="min-h-[27px] text-sm py-1 pr-3 w-full flex items-center text-muted-foreground/50 font-medium">
                       <span>No settings available</span>
-                    </div>
+                  </div>
                   )}
                 </div>
               </CollapsibleContent>

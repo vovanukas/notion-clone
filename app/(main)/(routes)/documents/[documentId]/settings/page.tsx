@@ -58,8 +58,7 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
     });
 
     // Settings state management
-    const { 
-        currentSection, 
+    const {
         setCurrentSection,
         setOriginalFormData,
         setCurrentFormData,
@@ -88,56 +87,31 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
                 setIsSaving(true);
                 
                 try {
-                    console.log("🚀 Form submitted from navbar - processing through pipeline...");
-                    console.log("📥 Raw form data:", formData);
-                    
                     // Step 3.5: Inject schema defaults for empty/undefined fields
                     const formDataWithDefaults = injectSchemaDefaults(formData, template.settingsJsonSchema);
-                    
-                    console.log("📤 Form data with defaults applied:");
-                    console.log(formDataWithDefaults);
                     
                     // Step 4: Remove categories and flatten back to simple key-value structure
                     const flatFormData = removeCategoriesFromFormData(formDataWithDefaults);
                     
-                    console.log("🎯 Flat form data:");
-                    console.log(flatFormData);
-                    
                     // Step 5: Unflatten back to nested structure grouped by file
                     const unflattenedByFile = unflattenFormDataByFile(flatFormData);
-                    
-                    console.log("🏗️ Unflattened structure:");
-                    console.log(unflattenedByFile);
                     
                     // Step 6: Convert to TOML/YAML strings
                     const configStrings = convertToConfigStrings(unflattenedByFile);
                     
-                    console.log("📝 Config strings ready for saving:");
-                    console.log(configStrings);
-                    
                     // Step 7: Save to GitHub
                     await saveConfigStringsToGitHub(configStrings, document._id, saveToGitHub);
-                    
-                    // Show summary of what was processed
-                    const totalCategories = Object.keys(formDataWithDefaults).length;
-                    const totalFields = Object.keys(flatFormData).length;
-                    const totalFiles = Object.keys(unflattenedByFile).length;
-                    const totalStrings = Object.keys(configStrings).length;
-                    
-                    console.log(`📊 Submission summary: ${totalCategories} categories → ${totalFields} flat fields → ${totalFiles} config files → ${totalStrings} config strings`);
-                    console.log("🎉 Settings saved successfully!");
                     
                     // Reset change tracking
                     setOriginalFormData(formData);
                     
                 } catch (error) {
-                    console.error("❌ Failed to save settings:", error);
+                    console.error("Failed to save settings:", error);
                     throw error; // Re-throw for toast handling
                 } finally {
                     setIsSaving(false);
                 }
             } else {
-                console.warn("⚠️ Form submission missing data, schema, or document ID");
                 throw new Error("Missing required data for saving settings");
             }
         };
@@ -153,8 +127,6 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
             const saveFunction = createSaveFunction(data.formData);
             setSaveFunction(saveFunction);
         }
-        
-        console.log('📝 Form changed:', Object.keys(data.formData || {}).length, 'fields');
     };
     
     const handleFormSubmit = async (data: any) => {
@@ -171,91 +143,66 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
         if (document?._id && document?.buildStatus === "BUILT") {
             // Only fetch if we haven't fetched for this document yet
             if (configFetchedRef.current !== document._id) {
-                console.log('🚀 Starting config processing pipeline...');
                 configFetchedRef.current = document._id;
 
-                // Completely reset all state before starting
-                console.log('🧹 Resetting all state before processing...');
+                // Reset all state before starting
                 setFlatFormData(null);
                 setEnrichedFormData(null);
 
                 fetchAndLogConfigs(document._id)
                     .then(result => {
-                        console.log('🎉 Steps 1 & 2 & 2.5 completed successfully!');
-                        console.log('ConfigFiles:', result.configFiles);
-                        console.log('Flattened FormData:', result.formData);
-
-                        // Debug: Check if Step 2.5 output is contaminated
-                        const step25HasCategories = Object.keys(result.formData).some(key =>
-                            ['general', 'appearance', 'content', 'social', 'seo', 'multilingual', 'advanced', '_preserved'].includes(key)
-                        );
-                        console.log('🔍 Step 2.5 output contaminated with categories?', step25HasCategories);
-
                         // Step 3: Run enrichment immediately if schema is available
                         if (template?.settingsJsonSchema) {
-                            console.log('🚀 Running Step 3: Schema available, enriching data...');
-                            
                             const enriched = enrichFormDataWithCategories(result.formData, template.settingsJsonSchema);
                             setEnrichedFormData(enriched);
                             
                             // Store as original data for change tracking
                             setOriginalFormData(enriched);
-                            
-                            console.log('🎉 Step 3 completed successfully!');
-                            console.log('📋 Final Enriched FormData Structure:');
-                            console.log(enriched);
                         } else {
-                            console.log('⏳ Step 3 deferred: Schema not yet available');
                             // Store flattened formData temporarily until schema loads
                             setFlatFormData(result.formData);
                         }
                     })
                     .catch(error => {
-                        console.error('❌ Steps 1 & 2 failed:', error);
+                        console.error('Error in config processing:', error);
                     });
             }
         }
-    }, [document?._id, document?.buildStatus, fetchAndLogConfigs]);
+    }, [document?._id, document?.buildStatus, fetchAndLogConfigs, template?.settingsJsonSchema, setOriginalFormData]);
 
     // Handle case where schema loads after config data (deferred Step 3)
     useEffect(() => {
         if (!enrichedFormData && flatFormData && Object.keys(flatFormData).length > 0 && template?.settingsJsonSchema) {
-            console.log('🚀 Running deferred Step 3: Schema just became available');
-            
             const enriched = enrichFormDataWithCategories(flatFormData, template.settingsJsonSchema);
             setEnrichedFormData(enriched);
             
             // Store as original data for change tracking
             setOriginalFormData(enriched);
-            
-            console.log('🎉 Deferred Step 3 completed successfully!');
-            console.log('📋 Final Enriched FormData Structure:');
-            console.log(enriched);
         }
     }, [template?.settingsJsonSchema, flatFormData, enrichedFormData, setOriginalFormData]);
 
     // Sync currentSection with URL hash and handle scrolling
     useEffect(() => {
-        if (!template?.settingsJsonSchema) return;
+        if (!enrichedFormData) return;
         
         const hash = window.location.hash.slice(1);
         
         // Update currentSection state to match URL hash
         if (hash) {
             setCurrentSection(hash);
-            // Scroll to the section
+            // Scroll to the section after form is rendered
             setTimeout(() => {
                 const element = window.document.getElementById(`root_${hash}__title`);
                 if (element) {
                     const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
                     window.scrollTo({ top: elementPosition - 100, behavior: 'smooth' });
                 }
-            }, 200);
+            }, 300); // Increased timeout to ensure form is fully rendered
         } else {
             // No hash means "All Settings" view
             setCurrentSection(null);
         }
-    }, [template?.settingsJsonSchema, setCurrentSection]);
+    }, [enrichedFormData, setCurrentSection]);
 
     // Listen for hash changes to update currentSection
     useEffect(() => {

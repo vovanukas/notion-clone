@@ -32,12 +32,12 @@ export const Navbar = () => {
   const { unloadAllDocuments, prepareAllForGithub } = useDocument();
 
   // Get settings store state and functions
-  const { 
-    hasUnsavedChanges: hasUnsavedSettingsChanges, 
+  const {
+    hasUnsavedChanges: hasUnsavedSettingsChanges,
     saveFunction: settingsSaveFunction,
-    isSaving: isSettingsSaving 
+    isSaving: isSettingsSaving
   } = useSettings();
-  
+
   // Check if we're on settings page
   const isOnSettingsPage = pathname?.includes('/settings') || false;
 
@@ -126,7 +126,7 @@ export const Navbar = () => {
             <div className="flex items-center gap-x-2">
               {/* Show appropriate save button based on page and unsaved changes */}
               {isOnSettingsPage && hasUnsavedSettingsChanges && (
-                <Button 
+                <Button
                   onClick={saveSettingsChanges}
                   disabled={isSettingsSaving}
                   className="flex items-center gap-2"
