@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -57,8 +57,15 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
         documentId: documentId
     });
 
-    // Only need currentSection for sidebar navigation
-    const { currentSection } = useSettings();
+    // Settings state management
+    const { 
+        currentSection, 
+        setCurrentSection,
+        setOriginalFormData,
+        setCurrentFormData,
+        setSaveFunction,
+        setIsSaving
+    } = useSettings();
 
     // Fetch template schema from database
     const template = useTemplateSchema(document?.theme);
@@ -70,10 +77,94 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
     // Pipeline state: Raw config → Flat data → Enriched (categorized) data → RJSF form
     const [flatFormData, setFlatFormData] = useState<Record<string, any> | null>(null);
     const [enrichedFormData, setEnrichedFormData] = useState<Record<string, any> | null>(null);
-    const [isSaving, setIsSaving] = useState(false);
     
     // Convex action for saving to GitHub
     const saveToGitHub = useAction(api.github.parseAndSaveMultipleConfigFiles);
+
+    // Create save function for navbar (must be before any conditional returns)
+    const createSaveFunction = useCallback((formData: Record<string, any>) => {
+        return async () => {
+            if (formData && template?.settingsJsonSchema && document?._id) {
+                setIsSaving(true);
+                
+                try {
+                    console.log("🚀 Form submitted from navbar - processing through pipeline...");
+                    console.log("📥 Raw form data:", formData);
+                    
+                    // Step 3.5: Inject schema defaults for empty/undefined fields
+                    const formDataWithDefaults = injectSchemaDefaults(formData, template.settingsJsonSchema);
+                    
+                    console.log("📤 Form data with defaults applied:");
+                    console.log(formDataWithDefaults);
+                    
+                    // Step 4: Remove categories and flatten back to simple key-value structure
+                    const flatFormData = removeCategoriesFromFormData(formDataWithDefaults);
+                    
+                    console.log("🎯 Flat form data:");
+                    console.log(flatFormData);
+                    
+                    // Step 5: Unflatten back to nested structure grouped by file
+                    const unflattenedByFile = unflattenFormDataByFile(flatFormData);
+                    
+                    console.log("🏗️ Unflattened structure:");
+                    console.log(unflattenedByFile);
+                    
+                    // Step 6: Convert to TOML/YAML strings
+                    const configStrings = convertToConfigStrings(unflattenedByFile);
+                    
+                    console.log("📝 Config strings ready for saving:");
+                    console.log(configStrings);
+                    
+                    // Step 7: Save to GitHub
+                    await saveConfigStringsToGitHub(configStrings, document._id, saveToGitHub);
+                    
+                    // Show summary of what was processed
+                    const totalCategories = Object.keys(formDataWithDefaults).length;
+                    const totalFields = Object.keys(flatFormData).length;
+                    const totalFiles = Object.keys(unflattenedByFile).length;
+                    const totalStrings = Object.keys(configStrings).length;
+                    
+                    console.log(`📊 Submission summary: ${totalCategories} categories → ${totalFields} flat fields → ${totalFiles} config files → ${totalStrings} config strings`);
+                    console.log("🎉 Settings saved successfully!");
+                    
+                    // Reset change tracking
+                    setOriginalFormData(formData);
+                    
+                } catch (error) {
+                    console.error("❌ Failed to save settings:", error);
+                    throw error; // Re-throw for toast handling
+                } finally {
+                    setIsSaving(false);
+                }
+            } else {
+                console.warn("⚠️ Form submission missing data, schema, or document ID");
+                throw new Error("Missing required data for saving settings");
+            }
+        };
+    }, [template?.settingsJsonSchema, document?._id, saveToGitHub, setIsSaving, setOriginalFormData]);
+
+    // Form event handlers
+    const handleFormChange = (data: any) => {
+        // Track form changes for navbar save button
+        if (data.formData) {
+            setCurrentFormData(data.formData);
+            
+            // Update save function with current form data
+            const saveFunction = createSaveFunction(data.formData);
+            setSaveFunction(saveFunction);
+        }
+        
+        console.log('📝 Form changed:', Object.keys(data.formData || {}).length, 'fields');
+    };
+    
+    const handleFormSubmit = async (data: any) => {
+        // Form submission now handled by navbar save button
+        // This is just a fallback if someone hits Enter in a form field
+        const saveFunction = createSaveFunction(data.formData);
+        if (saveFunction) {
+            await saveFunction();
+        }
+    };
 
     // Config Processing Pipeline: Steps 1 → 2 → 2.5 → 3
     useEffect(() => {
@@ -107,6 +198,9 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
                             const enriched = enrichFormDataWithCategories(result.formData, template.settingsJsonSchema);
                             setEnrichedFormData(enriched);
                             
+                            // Store as original data for change tracking
+                            setOriginalFormData(enriched);
+                            
                             console.log('🎉 Step 3 completed successfully!');
                             console.log('📋 Final Enriched FormData Structure:');
                             console.log(enriched);
@@ -131,18 +225,25 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
             const enriched = enrichFormDataWithCategories(flatFormData, template.settingsJsonSchema);
             setEnrichedFormData(enriched);
             
+            // Store as original data for change tracking
+            setOriginalFormData(enriched);
+            
             console.log('🎉 Deferred Step 3 completed successfully!');
             console.log('📋 Final Enriched FormData Structure:');
             console.log(enriched);
         }
-    }, [template?.settingsJsonSchema, flatFormData, enrichedFormData]);
+    }, [template?.settingsJsonSchema, flatFormData, enrichedFormData, setOriginalFormData]);
 
-    // Handle scrolling to section based on hash when schema loads
+    // Sync currentSection with URL hash and handle scrolling
     useEffect(() => {
         if (!template?.settingsJsonSchema) return;
         
         const hash = window.location.hash.slice(1);
+        
+        // Update currentSection state to match URL hash
         if (hash) {
+            setCurrentSection(hash);
+            // Scroll to the section
             setTimeout(() => {
                 const element = window.document.getElementById(`root_${hash}__title`);
                 if (element) {
@@ -150,11 +251,25 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
                     window.scrollTo({ top: elementPosition - 100, behavior: 'smooth' });
                 }
             }, 200);
+        } else {
+            // No hash means "All Settings" view
+            setCurrentSection(null);
         }
-    }, [template?.settingsJsonSchema]);
+    }, [template?.settingsJsonSchema, setCurrentSection]);
 
-    // Show loading skeleton while waiting for data
-    if (!document || document.buildStatus !== "BUILT" || !template) {
+    // Listen for hash changes to update currentSection
+    useEffect(() => {
+        const handleHashChange = () => {
+            const hash = window.location.hash.slice(1);
+            setCurrentSection(hash || null);
+        };
+
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+    }, [setCurrentSection]);
+
+    // Show loading skeleton while waiting for data or enriched form data
+    if (!document || document.buildStatus !== "BUILT" || !template || !enrichedFormData) {
         return (
             <div className="p-6 max-w-4xl mx-auto space-y-8">
                 {/* Header skeleton */}
@@ -192,72 +307,6 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
         );
     }
 
-    // Don't render form if no schema available
-    if (!template.settingsJsonSchema) {
-        return null;
-    }
-
-    // Form event handlers
-    const handleFormChange = (data: any) => {
-        // RJSF handles form state internally - no external state updates needed
-        console.log('📝 Form changed:', Object.keys(data.formData || {}).length, 'fields');
-    };
-    
-    const handleFormSubmit = async (data: any) => {
-        if (data.formData && template?.settingsJsonSchema && document?._id) {
-            setIsSaving(true);
-            
-            try {
-                console.log("🚀 Form submitted - processing through pipeline...");
-                console.log("📥 Raw form data:", data.formData);
-                
-                // Step 3.5: Inject schema defaults for empty/undefined fields
-                const formDataWithDefaults = injectSchemaDefaults(data.formData, template.settingsJsonSchema);
-                
-                console.log("📤 Form data with defaults applied:");
-                console.log(formDataWithDefaults);
-                
-                // Step 4: Remove categories and flatten back to simple key-value structure
-                const flatFormData = removeCategoriesFromFormData(formDataWithDefaults);
-                
-                console.log("🎯 Flat form data:");
-                console.log(flatFormData);
-                
-                // Step 5: Unflatten back to nested structure grouped by file
-                const unflattenedByFile = unflattenFormDataByFile(flatFormData);
-                
-                console.log("🏗️ Unflattened structure:");
-                console.log(unflattenedByFile);
-                
-                // Step 6: Convert to TOML/YAML strings
-                const configStrings = convertToConfigStrings(unflattenedByFile);
-                
-                console.log("📝 Config strings ready for saving:");
-                console.log(configStrings);
-                
-                // Step 7: Save to GitHub
-                await saveConfigStringsToGitHub(configStrings, document._id, saveToGitHub);
-                
-                // Show summary of what was processed
-                const totalCategories = Object.keys(formDataWithDefaults).length;
-                const totalFields = Object.keys(flatFormData).length;
-                const totalFiles = Object.keys(unflattenedByFile).length;
-                const totalStrings = Object.keys(configStrings).length;
-                
-                console.log(`📊 Submission summary: ${totalCategories} categories → ${totalFields} flat fields → ${totalFiles} config files → ${totalStrings} config strings`);
-                console.log("🎉 Settings saved successfully!");
-                
-            } catch (error) {
-                console.error("❌ Failed to save settings:", error);
-                // You could add a toast notification here
-            } finally {
-                setIsSaving(false);
-            }
-        } else {
-            console.warn("⚠️ Form submission missing data, schema, or document ID");
-        }
-    };
-
     return (
         <div className="p-6 max-w-4xl mx-auto">
             <ThemeProvider theme={muiDarkTheme}>
@@ -270,22 +319,7 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
                     onSubmit={handleFormSubmit}
                     omitExtraData={false}
                     liveOmit={false}
-                >
-                    <button
-                        type="submit"
-                        disabled={isSaving}
-                        className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        {isSaving ? (
-                            <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                Saving Settings...
-                            </>
-                        ) : (
-                            'Save Settings'
-                        )}
-                    </button>
-                </Form>
+                />
             </ThemeProvider>
         </div>
     );

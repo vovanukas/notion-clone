@@ -24,11 +24,47 @@ export interface ConfigFile {
 type SettingsStore = {
   currentSection: string | null;
   setCurrentSection: (section: string | null) => void;
+  
+  // Settings change tracking
+  hasUnsavedChanges: boolean;
+  setHasUnsavedChanges: (hasChanges: boolean) => void;
+  currentFormData: Record<string, any> | null;
+  setCurrentFormData: (formData: Record<string, any> | null) => void;
+  originalFormData: Record<string, any> | null;
+  setOriginalFormData: (formData: Record<string, any> | null) => void;
+  
+  // Save function reference
+  saveFunction: (() => Promise<void>) | null;
+  setSaveFunction: (saveFunction: (() => Promise<void>) | null) => void;
+  isSaving: boolean;
+  setIsSaving: (isSaving: boolean) => void;
 };
 
-export const useSettings = create<SettingsStore>((set) => ({
+export const useSettings = create<SettingsStore>((set, get) => ({
   currentSection: null,
   setCurrentSection: (section) => set({ currentSection: section }),
+  
+  // Settings change tracking
+  hasUnsavedChanges: false,
+  setHasUnsavedChanges: (hasChanges) => set({ hasUnsavedChanges: hasChanges }),
+  currentFormData: null,
+  setCurrentFormData: (formData) => {
+    set({ currentFormData: formData });
+    // Check if there are changes compared to original
+    const { originalFormData } = get();
+    if (originalFormData && formData) {
+      const hasChanges = JSON.stringify(formData) !== JSON.stringify(originalFormData);
+      set({ hasUnsavedChanges: hasChanges });
+    }
+  },
+  originalFormData: null,
+  setOriginalFormData: (formData) => set({ originalFormData: formData, hasUnsavedChanges: false }),
+  
+  // Save function reference
+  saveFunction: null,
+  setSaveFunction: (saveFunction) => set({ saveFunction }),
+  isSaving: false,
+  setIsSaving: (isSaving) => set({ isSaving }),
 }));
 
 // Hook to get template schema from database

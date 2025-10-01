@@ -4,7 +4,7 @@ import React, { useEffect, useCallback, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, usePathname } from "next/navigation";
 import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
 import { useSettings, useTemplateSchema, getSectionsFromSchema } from "@/hooks/use-settings";
 import { toast } from "sonner";
@@ -69,6 +69,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const search = useSearch();
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
 
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
@@ -78,6 +79,17 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { currentSection, setCurrentSection } = useSettings();
   const template = useTemplateSchema(document?.theme);
   const availableSections = getSectionsFromSchema(template?.settingsJsonSchema, template?.settingsUiSchema);
+
+  // Clear currentSection when navigating away from settings page
+  useEffect(() => {
+    const isOnSettingsPage = pathname.includes('/settings');
+    
+    // If we're not on a settings page and currentSection is set, clear it
+    if (!isOnSettingsPage && currentSection) {
+      console.log('🧹 Clearing currentSection - navigated away from settings to:', pathname);
+      setCurrentSection(null);
+    }
+  }, [pathname, currentSection, setCurrentSection]);
 
   const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
   const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
@@ -356,6 +368,9 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     const settingsUrl = `/documents/${params.documentId}/settings`;
     const isOnSettingsPage = window.location.pathname.includes('/settings');
 
+    // Update the currentSection state immediately
+    setCurrentSection(sectionKey);
+
     if (sectionKey) {
       const urlWithHash = `${settingsUrl}#${sectionKey}`;
       if (isOnSettingsPage) {
@@ -367,7 +382,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } else {
       router.push(settingsUrl);
     }
-  }, [params.documentId, router, scrollToSection]);
+  }, [params.documentId, router, scrollToSection, setCurrentSection]);
 
   const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
@@ -458,16 +473,25 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         {params.documentId && (
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
+            {/* Settings with split button design */}
             <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-              <CollapsibleTrigger asChild>
+              <div className="flex">
+                {/* Main Settings Button - Navigate to All Settings */}
                 <div
-                  className={`group min-h-[27px] text-sm py-1 pr-3 pl-3 w-full hover:bg-primary/5 flex items-center text-muted-foreground font-medium cursor-pointer ${
-                    isSettingsOpen ? "bg-primary/5 text-primary" : ""
+                  className={`group min-h-[27px] text-sm py-1 pl-3 pr-1 flex-1 hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
+                    pathname.includes('/settings') && !currentSection
+                      ? "bg-primary/5 text-primary"
+                      : "text-muted-foreground"
                   }`}
+                  onClick={() => handleSettingsNavigation(null)}
                 >
                   <Settings className="shrink-0 h-[18px] w-[18px] mr-2 text-muted-foreground" />
                   <span>Settings</span>
-                  <div className="ml-auto">
+                </div>
+                
+                {/* Separate Arrow Button - Toggle Submenu */}
+                <CollapsibleTrigger asChild>
+                  <div className="min-h-[27px] px-2 hover:bg-primary/5 flex items-center cursor-pointer text-muted-foreground">
                     {!template && document?.theme ? (
                       <Spinner size="sm" />
                     ) : isSettingsOpen ? (
@@ -476,30 +500,18 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                     )}
                   </div>
-                </div>
-              </CollapsibleTrigger>
+                </CollapsibleTrigger>
+              </div>
               <CollapsibleContent>
                 <div className="pl-8 py-1 space-y-1">
                   {availableSections.length > 0 ? (
                     <>
-                      {/* All Settings Option */}
-                      <div
-                        className={`min-h-[27px] text-sm py-1 pr-3 w-full hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
-                          !currentSection && window.location.pathname.includes('/settings')
-                            ? "bg-primary/5 text-primary"
-                            : "text-muted-foreground"
-                        }`}
-                        onClick={() => handleSettingsNavigation(null)}
-                      >
-                        <span>All Settings</span>
-                      </div>
-
-                      {/* Individual Sections */}
+                      {/* Individual Sections Only */}
                       {availableSections.map((section) => (
                         <div
                           key={section.key}
                           className={`min-h-[27px] text-sm py-1 pr-3 w-full hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
-                            currentSection === section.key
+                            currentSection === section.key && pathname.includes('/settings')
                               ? "bg-primary/5 text-primary"
                               : "text-muted-foreground"
                           }`}
