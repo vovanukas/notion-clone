@@ -279,6 +279,53 @@ export const removeCategoriesFromFormData = (
 };
 
 /**
+ * Step 4.5: Escape special characters in flat form data keys
+ * Apply this before unflattening to prevent misinterpretation of special characters
+ * ONLY escapes the key portion after the file extension, not the file paths
+ */
+export const escapeSpecialCharsInKeys = (flatFormData: Record<string, any>): Record<string, any> => {
+  const escapedFormData: Record<string, any> = {};
+  
+  // Define characters that need escaping to prevent flat library misinterpretation
+  const escapeMap = {
+    '/': '___SLASH___',
+    '+': '___PLUS___',
+    '"': '___QUOTE___',
+    ':': '___COLON___',
+    '@': '___AT___',
+    '#': '___HASH___',
+    '%': '___PERCENT___',
+    '&': '___AMP___',
+    '=': '___EQUALS___',
+    '?': '___QUESTION___'
+  };
+  
+  Object.entries(flatFormData).forEach(([key, value]) => {
+    // Split the key into file path and config key portions
+    const match = key.match(/^(.+\.(toml|yaml|yml|json))\/(.+)$/);
+    
+    if (match) {
+      const [, filePath, , configKey] = match;
+      
+      // Only escape special characters in the config key portion
+      let escapedConfigKey = configKey;
+      Object.entries(escapeMap).forEach(([char, replacement]) => {
+        escapedConfigKey = escapedConfigKey.replace(new RegExp(`\\${char}`, 'g'), replacement);
+      });
+      
+      // Reconstruct the full key with escaped config key
+      const escapedKey = `${filePath}/${escapedConfigKey}`;
+      escapedFormData[escapedKey] = value;
+    } else {
+      // No file extension pattern found, keep as-is
+      escapedFormData[key] = value;
+    }
+  });
+  
+  return escapedFormData;
+};
+
+/**
  * Step 5: Unflatten the flat formData back to nested structure by file
  * Groups fields by file path and unflattens nested keys using the flat library.
  */
@@ -340,15 +387,22 @@ export const unflattenFormDataByFile = (
   });
   console.groupEnd();
   
-  // Unflatten each file's data using the flat library
+  // Unflatten each file's data using the flat library with escaping
   const unflattenedFiles: Record<string, Record<string, any>> = {};
   
   Object.entries(fileGroups).forEach(([filePath, flatData]) => {
     try {
-      // Use flat library to unflatten nested keys (e.g., "params.author" → { params: { author: "..." } })
+      // Use flat library to unflatten nested keys with transformKey to handle special characters
       const unflattened = unflatten(flatData, { 
         delimiter: '.', 
-        safe: true 
+        safe: true,
+        transformKey: function(key) {
+          // Unescape special characters back to original form
+          return key
+            .replace(/___SLASH___/g, '/')
+            .replace(/___PLUS___/g, '+')
+            .replace(/___QUOTE___/g, '"');
+        }
       }) as Record<string, any>;
 
       unflattenedFiles[filePath] = unflattened;

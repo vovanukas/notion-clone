@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { useSettings, useTemplateSchema, useConfigFetcher, enrichFormDataWithCategories, injectSchemaDefaults, removeCategoriesFromFormData, unflattenFormDataByFile, convertToConfigStrings, saveConfigStringsToGitHub } from "@/hooks/use-settings";
+import { useSettings, useTemplateSchema, useConfigFetcher, enrichFormDataWithCategories, injectSchemaDefaults, removeCategoriesFromFormData, escapeSpecialCharsInKeys, unflattenFormDataByFile, convertToConfigStrings, saveConfigStringsToGitHub } from "@/hooks/use-settings";
 import Form from "@rjsf/mui";
 import validator from "@rjsf/validator-ajv8";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
@@ -93,8 +93,11 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
                     // Step 4: Remove categories and flatten back to simple key-value structure
                     const flatFormData = removeCategoriesFromFormData(formDataWithDefaults);
                     
+                    // Step 4.5: Escape special characters to prevent flat library misinterpretation
+                    const escapedFlatFormData = escapeSpecialCharsInKeys(flatFormData);
+                    
                     // Step 5: Unflatten back to nested structure grouped by file
-                    const unflattenedByFile = unflattenFormDataByFile(flatFormData);
+                    const unflattenedByFile = unflattenFormDataByFile(escapedFlatFormData);
                     
                     // Step 6: Convert to TOML/YAML strings
                     const configStrings = convertToConfigStrings(unflattenedByFile);
