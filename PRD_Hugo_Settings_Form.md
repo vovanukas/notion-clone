@@ -165,31 +165,37 @@ interface FieldPath {
 }
 ```
 
-### 3. Frontend Components ✅ IMPLEMENTED
+### 3. Frontend Components ✅ FULLY IMPLEMENTED
 
 #### 3.1 Implemented Components Structure
 ```
 app/(main)/(routes)/documents/[documentId]/settings/
-  page.tsx                    # Main settings page with RJSF form
+  page.tsx                    # Main settings page with RJSF form and complete data pipeline
 
 app/(main)/_components/
-  app-sidebar.tsx             # Updated with dynamic settings navigation
+  app-sidebar.tsx             # Dynamic settings navigation with section highlighting
+  navbar.tsx                  # Save button integration with unsaved changes detection
 
 hooks/
-  use-settings.tsx            # Simplified Zustand store for settings state
+  use-settings.tsx            # Complete data transformation pipeline and Zustand store
   
 components/ui/
   skeleton.tsx                # Loading states for settings page
 ```
 
-#### 3.2 Key Implementation Details
+#### 3.2 Key Implementation Features
 - **Settings Page**: `/documents/[documentId]/settings` route with react-jsonschema-form
-- **Navigation**: Hash-based navigation (`#general`, `#appearance`, etc.)
+- **Hash Navigation**: Deep linking (`#general`, `#appearance`, etc.) with smooth scrolling
 - **Schema Loading**: Direct integration with Convex `getTemplateByFolder` query
-- **State Management**: Simplified Zustand store with `currentSection` and `formData`
+- **Complete Data Pipeline**: 7-step transformation from config files to form and back
+- **State Management**: Zustand store with `currentSection`, `formData`, `hasUnsavedChanges`, `isSaving`
+- **Save Integration**: Navbar save button with loading states and toast notifications
 - **Theme Integration**: MUI dark theme optimized for form readability
-- **Loading States**: Skeleton components while schema loads
+- **Loading States**: Skeleton components while schema and data load
 - **Section Ordering**: Uses UI schema `ui:order` array for proper section sequence
+- **Sidebar Integration**: Dynamic menu generation with proper highlighting
+- **Error Handling**: Comprehensive error handling throughout the pipeline
+- **Special Character Support**: Advanced TOML key escaping for complex configurations
 
 #### 3.2 Settings Form Component
 ```typescript
@@ -223,47 +229,138 @@ function mapFormDataToConfigFiles(
 }
 ```
 
-### 4. Backend API Extensions
+### 4. Backend API Extensions ✅ IMPLEMENTED
 
-#### 4.1 New Convex Functions
+#### 4.1 Data Transformation Pipeline
+The complete data processing pipeline has been implemented in `hooks/use-settings.tsx`:
+
+**Step 1: Config File Fetching**
 ```typescript
-// convex/hugoTemplates.ts (Updated)
-export const getTemplateWithSchema = query({
-  args: { folderName: v.string() },
-  handler: async (ctx, args) => {
-    const template = await ctx.db
-      .query("hugoTemplates")
-      .withIndex("by_active", (q) => q.eq("isActive", true))
-      .filter((q) => q.eq(q.field("folderName"), args.folderName))
-      .first();
-    
-    return template; // Includes settingsJsonSchema and settingsUiSchema
-  }
+// Fetch raw config files from GitHub
+const configFiles = await fetchConfigFiles(documentId);
+```
+
+**Step 2: Parsing to Form Data**
+```typescript
+// Parse TOML/YAML/JSON files and flatten to form-compatible structure
+const parseConfigsToFormData = (configFiles: ConfigFile[]): Record<string, any> => {
+  // Uses smol-toml, gray-matter for parsing
+  // Creates flat structure with "filePath/configKey" format
+};
+```
+
+**Step 2.5: Data Flattening**
+```typescript
+// Flatten nested objects using 'flat' library with special character escaping
+const flattenFormDataWithLibrary = (formData: Record<string, any>): Record<string, any> => {
+  return flatten(formData, {
+    safe: true,        // Preserve arrays
+    delimiter: '.',    // Use dots for nested keys
+  });
+};
+```
+
+**Step 3: Schema Enrichment**
+```typescript
+// Add category information from JSON schema
+const enrichFormDataWithCategories = (
+  flatFormData: Record<string, any>,
+  jsonSchema: any
+): Record<string, any> => {
+  // Groups fields by schema categories (general, appearance, etc.)
+};
+```
+
+**Step 3.5: Hugo-Safe Defaults**
+```typescript
+// Inject schema defaults while preserving user values
+const injectSchemaDefaults = (
+  enrichedFormData: Record<string, any>,
+  jsonSchema: any
+): Record<string, any> => {
+  // Ensures all schema fields have appropriate defaults
+};
+```
+
+**Step 4: Category Removal**
+```typescript
+// Remove category groupings for processing
+const removeCategoriesFromFormData = (enrichedFormData: Record<string, any>): Record<string, any> => {
+  // Flattens back to simple key-value structure
+};
+```
+
+**Step 4.5: Special Character Escaping**
+```typescript
+// Escape problematic characters in TOML keys before unflattening
+const escapeSpecialCharsInKeys = (flatFormData: Record<string, any>): Record<string, any> => {
+  // Handles keys like "application/manifest+json" that conflict with path delimiters
+  // Only escapes the config key portion, preserves file paths
+};
+```
+
+**Step 5: File-Based Unflattening**
+```typescript
+// Group and unflatten data by target config file
+const unflattenFormDataByFile = (
+  flatFormData: Record<string, any>
+): Record<string, Record<string, any>> => {
+  // Recreates nested object structure for each config file
+};
+```
+
+**Step 6: Config String Generation**
+```typescript
+// Convert to TOML/YAML/JSON strings
+const convertToConfigStrings = (
+  unflattenedFiles: Record<string, Record<string, any>>
+): Record<string, string> => {
+  // Uses smol-toml, gray-matter for stringification
+};
+```
+
+**Step 7: GitHub Integration**
+```typescript
+// Save to repository via Convex action
+const saveConfigStringsToGitHub = async (
+  documentId: Id<"documents">,
+  configStrings: Record<string, string>
+): Promise<void> => {
+  // Integrates with parseAndSaveMultipleConfigFiles Convex action
+};
+```
+
+#### 4.2 Convex Functions (Implemented)
+```typescript
+// convex/documents.ts
+export const getConfigFiles = query({
+  // Fetches current config files for form initialization
 });
 
-export const updateTemplateSchema = mutation({
-  args: { 
-    templateId: v.id("hugoTemplates"),
-    settingsJsonSchema: v.optional(v.record(v.string(), v.any())),
-    settingsUiSchema: v.optional(v.record(v.string(), v.any()))
-  },
-  handler: async (ctx, args) => {
-    const { templateId, ...schemaData } = args;
-    return await ctx.db.patch(templateId, schemaData);
-  }
+// convex/httpActions.ts  
+export const parseAndSaveMultipleConfigFiles = action({
+  // Saves processed config files back to GitHub
+  // Handles multiple file formats and validation
 });
+```
 
-// New settings-specific functions
-export const saveFormSettings = action({
-  args: { 
-    documentId: v.id("documents"),
-    formData: v.any(),
-    jsonSchema: v.record(v.string(), v.any())
-  },
-  handler: async (ctx, args) => {
-    // Convert form data to config files and save via GitHub API
-  }
-});
+#### 4.3 Special Character Handling
+Advanced TOML key escaping system for complex Hugo configurations:
+
+```typescript
+// Handles problematic characters in TOML keys
+const ESCAPE_MAPPINGS = {
+  '/': '___SLASH___',    // For keys like "application/manifest+json"
+  '+': '___PLUS___',     // For keys with plus signs
+  '"': '___QUOTE___',    // For quoted keys
+  // ... additional mappings
+} as const;
+
+// Dynamic escaping only applied to config key portion
+const escapeSpecialCharsInKeys = (flatFormData: Record<string, any>) => {
+  // Uses regex to identify file path vs config key
+  // Only escapes the config key portion after file extension
+};
 ```
 
 #### 4.2 Configuration Parser Service (Using grey-matter)
@@ -348,12 +445,15 @@ class HugoConfigParser {
 - [x] Responsive loading skeletons
 - [x] Client-side navigation with hash fragments
 
-#### 5.3 Phase 3: Hugo Patterns (Week 3-4) - IN PROGRESS
-- [ ] TOML table support
-- [ ] TOML array support (Hugo menus)
-- [ ] Configuration file mapping using grey-matter
-- [ ] Form data to Hugo config file conversion
-- [ ] Save functionality with GitHub API integration
+#### 5.3 Phase 3: Hugo Patterns (Week 3-4) ✅ COMPLETED
+- [x] TOML table support
+- [x] TOML array support (Hugo menus)
+- [x] Configuration file mapping using grey-matter
+- [x] Form data to Hugo config file conversion
+- [x] Save functionality with GitHub API integration
+- [x] Complex special character handling in TOML keys
+- [x] Data flattening/unflattening pipeline with `flat` library
+- [x] Multi-file configuration support (hugo.toml, params.toml, languages.toml, etc.)
 
 #### 5.4 Phase 4: Advanced Features (Week 5-6)
 - [ ] Theme-specific schemas for multiple themes
@@ -550,36 +650,55 @@ API error → Show toast notification → Retry mechanism
 
 ## Implementation Summary ✅
 
-### ✅ **Completed (Phase 1 & 2)**
-The frontend form interface has been **successfully implemented** with the following key features:
+### ✅ **FULLY COMPLETED (Phases 1, 2 & 3)**
+The Hugo Settings Form has been **completely implemented** with full end-to-end functionality:
 
-#### **Core Implementation**
+#### **Core Frontend Implementation**
 - **Database Schema**: `settingsJsonSchema` and `settingsUiSchema` columns added to `hugoTemplates`
 - **Settings Route**: `/documents/[documentId]/settings` with full RJSF integration
-- **Dynamic Navigation**: Sidebar automatically generates menu from schema sections
+- **Dynamic Navigation**: Sidebar automatically generates menu from schema sections with proper highlighting
 - **Schema Ordering**: Respects `ui:order` from UI schema (not alphabetical)
-- **State Management**: Clean Zustand store with minimal complexity
+- **State Management**: Comprehensive Zustand store with unsaved changes tracking
 - **Loading States**: Professional skeleton loading components
-- **Hash Navigation**: Deep linking to specific sections (`#general`, `#appearance`)
+- **Hash Navigation**: Deep linking to specific sections (`#general`, `#appearance`) with smooth scrolling
 - **Responsive Design**: Optimized for all screen sizes
 - **Dark Mode**: Custom MUI theme for excellent readability
 
+#### **Complete Data Transformation Pipeline**
+- **7-Step Processing Pipeline**: From raw config files to form data and back
+- **Multi-File Support**: Handles hugo.toml, params.toml, languages.toml, etc.
+- **Advanced Parsing**: Uses smol-toml and gray-matter for robust file parsing
+- **Data Flattening**: Sophisticated flattening/unflattening with the `flat` library
+- **Special Character Handling**: Advanced escaping system for complex TOML keys like `"application/manifest+json"`
+- **Schema Integration**: Dynamic form generation from JSON schemas with category grouping
+- **Default Injection**: Hugo-safe default value handling
+- **GitHub Integration**: Full save functionality via Convex actions
+
+#### **User Experience Features**
+- **Save Integration**: Navbar save button with loading states and toast notifications
+- **Unsaved Changes Detection**: Prevents data loss with change tracking
+- **Error Handling**: Comprehensive error handling throughout the pipeline
+- **Validation**: Real-time form validation with user-friendly error messages
+- **Performance**: Optimized loading with skeleton states and efficient re-renders
+
 #### **Technical Architecture**
 - **RJSF v6 Beta**: Latest version with React 18+ support
-- **MUI Theme**: Superior dark mode experience vs shadcn
-- **Convex Integration**: Direct schema loading via `getTemplateByFolder`
+- **MUI Theme**: Superior dark mode experience
+- **Convex Integration**: Direct schema loading and config file management
 - **Code Quality**: Zero linting errors, optimized performance
-- **Simplified State**: Removed unnecessary complexity from original design
+- **Production Ready**: Clean, maintainable code with proper error handling
 
-### ⏳ **Next Phase: Backend Integration**
-The next milestone is implementing the **save functionality**:
-- Form data to Hugo config file mapping
-- Integration with grey-matter for TOML/YAML parsing  
-- GitHub API integration for file updates
-- Configuration preview and validation
+### ⏳ **Next Phase: Advanced Features**
+The core functionality is complete. Future enhancements could include:
+- Theme-specific schemas for multiple Hugo themes
+- Advanced field types (color picker, image upload) 
+- Configuration preview mode
+- Enhanced validation and error handling
+- Multi-language configuration support
 
 ---
 
-**Document Version**: 2.0  
-**Last Updated**: September 29, 2025  
-**Next Review**: October 13, 2025
+**Document Version**: 3.0  
+**Last Updated**: October 6, 2025  
+**Status**: ✅ **PRODUCTION READY**  
+**Next Review**: October 20, 2025
