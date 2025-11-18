@@ -31,6 +31,8 @@ export default defineSchema({
         isActive: v.boolean(),
         settingsJsonSchema: v.optional(v.record(v.string(), v.any())),
         settingsUiSchema: v.optional(v.record(v.string(), v.any())),
+        pageSettingsJsonSchema: v.optional(v.record(v.string(), v.any())),
+        pageSettingsUiSchema: v.optional(v.record(v.string(), v.any())),
     })
     .index("by_active", ["isActive"])
     .index("by_category", ["category"])

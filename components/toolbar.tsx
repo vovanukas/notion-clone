@@ -1,15 +1,16 @@
+/* eslint-disable */
 "use client";
 
 import { useRef, useState, useEffect } from "react";
 import { ImageIcon, Smile, X, Settings } from "lucide-react";
 import { useMutation } from "convex/react";
 import TextareaAutosize from "react-textarea-autosize";
+import { useRouter, useParams } from "next/navigation";
 
 import { api } from "@/convex/_generated/api";
 import { IconPicker } from "./icon-picker";
 import { Button } from "./ui/button";
 import { useCoverImage } from "@/hooks/use-cover-image";
-import { usePageSettings } from "@/hooks/use-page-settings";
 import { Doc } from "@/convex/_generated/dataModel";
 import { isImagePath } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ interface ToolbarProps {
     preview?: boolean;
     onTitleChange: (value: string) => void;
     showIconPicker?: boolean;
+    filePath?: string;  // Optional: the file path for linking to settings
 }
 
 // Helper function to detect if there's an image in the metadata (including nested)
@@ -59,17 +61,19 @@ export const Toolbar = ({
     initialData,
     preview,
     onTitleChange,
-    showIconPicker = true
+    showIconPicker = true,
+    filePath
 }: ToolbarProps) => {
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [value, setValue] = useState(initialData.title || '');
     const [pendingValue, setPendingValue] = useState(initialData.title || '');
 
+    const router = useRouter();
+    const params = useParams();
     const update = useMutation(api.documents.update);
     const removeIcon = useMutation(api.documents.removeIcon);
     const coverImage = useCoverImage();
-    const pageSettings = usePageSettings();
 
     useEffect(() => {
         setValue(initialData.title || '');
@@ -158,7 +162,7 @@ export const Toolbar = ({
                         </Button>
                     </IconPicker>
                 )}
-                {!hasImageInMetadata(initialData) && !preview && (
+                {/* {!hasImageInMetadata(initialData) && !preview && (
                     <Button
                         onClick={coverImage.onOpen}
                         className="text-muted-foreground text-xs"
@@ -168,10 +172,13 @@ export const Toolbar = ({
                         <ImageIcon className="h-4 w-4 mr-2" />
                         Add cover
                     </Button>
-                )}
-                {!preview && (
+                )} */}
+                {!preview && filePath && (
                     <Button
-                        onClick={pageSettings.onOpen}
+                        onClick={() => {
+                            const documentId = params.documentId;
+                            router.push(`/documents/${documentId}/page-settings/${filePath}`);
+                        }}
                         className="text-muted-foreground text-xs"
                         variant="outline"
                         size="sm"

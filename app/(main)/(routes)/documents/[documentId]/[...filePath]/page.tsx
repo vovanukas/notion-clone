@@ -8,7 +8,6 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Toolbar } from "@/components/toolbar";
 import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SettingsModal } from "@/components/modals/settings-modal";
 import dynamic from "next/dynamic";
 import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useDocument } from "@/hooks/use-document";
@@ -233,6 +232,7 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
                         ...currentDocument.frontmatter.parsed
                     }}
                     showIconPicker={false}
+                    filePath={filePathString}
                 />
                 <Editor
                     onChange={onChange}
@@ -240,7 +240,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
                     editable={true}
                 />
             </div>
-            <SettingsModal />
         </div>
     );
 };

@@ -260,16 +260,18 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
     return (
         <div className="p-6 max-w-4xl mx-auto">
             <ThemeProvider theme={muiDarkTheme}>
-                <Form
-                    schema={template.settingsJsonSchema}
-                    uiSchema={template.settingsUiSchema || {}}
-                    formData={enrichedFormData}
-                    validator={validator}
-                    onChange={handleFormChange}
-                    onSubmit={handleFormSubmit}
-                    omitExtraData={false}
-                    liveOmit={false}
-                />
+                <div style={{ maxWidth: '100%', width: '100%', overflow: 'hidden' }}>
+                    <Form
+                        schema={template.settingsJsonSchema}
+                        uiSchema={template.settingsUiSchema || {}}
+                        formData={enrichedFormData}
+                        validator={validator}
+                        onChange={handleFormChange}
+                        onSubmit={handleFormSubmit}
+                        omitExtraData={false}
+                        liveOmit={false}
+                    />
+                </div>
             </ThemeProvider>
         </div>
     );

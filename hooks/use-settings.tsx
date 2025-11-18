@@ -395,7 +395,6 @@ export const unflattenFormDataByFile = (
       // Use flat library to unflatten nested keys with transformKey to handle special characters
       const unflattened = unflatten(flatData, { 
         delimiter: '.', 
-        safe: true,
         transformKey: function(key) {
           // Unescape special characters back to original form
           return key
