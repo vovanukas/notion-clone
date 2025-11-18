@@ -7,7 +7,6 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Cover } from "@/components/cover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SettingsModal } from "@/components/modals/settings-modal";
 import { use } from "react";
 import Editor from "@monaco-editor/react";
 import { useEffect, useState } from "react";
@@ -263,92 +262,87 @@ const DocumentIdPage = ({ params }: DocumentIdPageProps) => {
     const activeConfig = configFiles.find(config => config.path === activeConfigTab);
 
     return ( 
-        <div className="pb-40">
-            <div className="md:max-w-5xl lg:max-w-6xl mx-auto">
-                <div className="p-6 border rounded bg-muted">
-                    <div className="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 className="text-lg font-semibold">Site Configuration</h2>
-                            <p className="text-sm text-muted-foreground">
-                                Modify your site settings. Switch between files using the tabs below.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Badge variant="secondary">
-                                {configFiles.length} config file{configFiles.length > 1 ? 's' : ''}
-                            </Badge>
-                            <Button
-                                type="button"
-                                onClick={handleConfigSave}
-                                disabled={savingConfig}
-                            >
-                                {savingConfig ? (
-                                    <>
-                                        <div className="mr-2">
-                                            <Spinner size="sm" />
-                                        </div>
-                                        Saving...
-                                    </>
-                                ) : (
-                                    "Save config changes"
-                                )}
-                            </Button>
-                        </div>
+        <div className="md:max-w-5xl lg:max-w-6xl mx-auto">
+            <div className="p-6 border rounded bg-muted">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 className="text-lg font-semibold">Site Configuration</h2>
+                        <p className="text-sm text-muted-foreground">
+                            Modify your site settings. Switch between files using the tabs below.
+                        </p>
                     </div>
-                    
-                    {/* Config File Tabs */}
-                    <div className="mb-4">
-                        <div className="flex flex-wrap gap-2">
-                            {Object.entries(groupedConfigs).map(([category, configs]) => (
-                                <div key={category} className="flex items-center gap-2">
-                                    <span className="text-xs font-medium text-muted-foreground px-2 py-1 bg-secondary/50 rounded">
-                                        {category}
-                                    </span>
-                                    {configs.map((config) => (
-                                        <Button
-                                            key={config.path}
-                                            variant={activeConfigTab === config.path ? "default" : "outline"}
-                                            size="sm"
-                                            onClick={() => setActiveConfigTab(config.path)}
-                                            className="text-xs"
-                                        >
-                                            {getConfigDisplayName(config)}
-                                        </Button>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
+                    <div className="flex items-center gap-2">
+                        <Badge variant="secondary">
+                            {configFiles.length} config file{configFiles.length > 1 ? 's' : ''}
+                        </Badge>
+                        <Button
+                            type="button"
+                            onClick={handleConfigSave}
+                            disabled={savingConfig}
+                        >
+                            {savingConfig ? (
+                                <>
+                                    <div className="mr-2">
+                                        <Spinner size="sm" />
+                                    </div>
+                                    Saving...
+                                </>
+                            ) : (
+                                "Save config changes"
+                            )}
+                        </Button>
                     </div>
-
-                    {/* Config Editor */}
-                    {activeConfig && (
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="text-sm text-muted-foreground">
-                                    Editing: <code className="bg-secondary px-2 py-1 rounded text-xs">{activeConfig.path}</code>
-                                </div>
-                            </div>
-                            <div className="grid gap-4 py-4 overflow-y-auto" style={{ maxHeight: "500px" }}>
-                                <Editor
-                                    height="500px"
-                                    language={getEditorLanguage(activeConfig.path)}
-                                    value={activeConfig.content}
-                                    onChange={(value) => handleConfigEditorChange(value, activeConfig.path)}
-                                    theme="vs-dark"
-                                    options={{
-                                        minimap: { enabled: false },
-                                        scrollBeyondLastLine: false,
-                                        automaticLayout: true,
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    )}
-
-
                 </div>
+
+                {/* Config File Tabs */}
+                <div className="mb-4">
+                    <div className="flex flex-wrap gap-2">
+                        {Object.entries(groupedConfigs).map(([category, configs]) => (
+                            <div key={category} className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground px-2 py-1 bg-secondary/50 rounded">
+                                    {category}
+                                </span>
+                                {configs.map((config) => (
+                                    <Button
+                                        key={config.path}
+                                        variant={activeConfigTab === config.path ? "default" : "outline"}
+                                        size="sm"
+                                        onClick={() => setActiveConfigTab(config.path)}
+                                        className="text-xs"
+                                    >
+                                        {getConfigDisplayName(config)}
+                                    </Button>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Config Editor */}
+                {activeConfig && (
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm text-muted-foreground">
+                                Editing: <code className="bg-secondary px-2 py-1 rounded text-xs">{activeConfig.path}</code>
+                            </div>
+                        </div>
+                        <div className="grid gap-4 py-4 overflow-y-auto" style={{ maxHeight: "500px" }}>
+                            <Editor
+                                height="500px"
+                                language={getEditorLanguage(activeConfig.path)}
+                                value={activeConfig.content}
+                                onChange={(value) => handleConfigEditorChange(value, activeConfig.path)}
+                                theme="vs-dark"
+                                options={{
+                                    minimap: { enabled: false },
+                                    scrollBeyondLastLine: false,
+                                    automaticLayout: true,
+                                }}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
-            <SettingsModal />
         </div>
      );
 }
