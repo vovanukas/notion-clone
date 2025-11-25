@@ -1,5 +1,7 @@
 "use client";
 
+export const runtime = "edge";
+
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/clerk-react";
