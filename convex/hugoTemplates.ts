@@ -27,6 +27,17 @@ export const seedTemplates = mutation({
                 features: ["Portfolio", "Minimalist", "Elegant", "Personal Blog", "Smooth Animations"],
                 category: "portfolio",
                 isActive: true,
+            },
+            {
+                name: "Dot Hugo",
+                description: "A comprehensive documentation theme with advanced search, multi-language support, and clean design perfect for knowledge bases.",
+                previewImage: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=400&h=300&fit=crop&crop=center",
+                demoLink: "https://themes.gohugo.io/themes/dot-hugo/",
+                repositoryUrl: "https://github.com/vovanukas/hugo-sites",
+                folderName: "dot-hugo",
+                features: ["Documentation", "Search", "Multi-language", "Knowledge Base", "Clean Design"],
+                category: "docs",
+                isActive: true,
             }
         ];
 
@@ -104,3 +115,25 @@ export const getTemplateCategories = query({
         return categories;
     }
 }); 
+
+export const getPageSettingsSchema = query({
+    args: {
+        folderName: v.string()
+    },
+    handler: async (ctx, args) => {
+        const template = await ctx.db
+            .query("hugoTemplates")
+            .withIndex("by_active", (q) => q.eq("isActive", true))
+            .filter((q) => q.eq(q.field("folderName"), args.folderName))
+            .first();
+
+        if (!template) {
+            return null;
+        }
+
+        return {
+            jsonSchema: template.pageSettingsJsonSchema,
+            uiSchema: template.pageSettingsUiSchema
+        };
+    }
+});

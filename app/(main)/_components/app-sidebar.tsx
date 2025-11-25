@@ -1,22 +1,25 @@
 "use client";
 
-import React, { useEffect, useCallback } from "react";
+import React, { useEffect, useCallback, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSearch } from "@/hooks/use-search";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, usePathname } from "next/navigation";
 import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
+import { useSettings, useTemplateSchema, getSectionsFromSchema } from "@/hooks/use-settings";
 import { toast } from "sonner";
 import {
   File as FileIcon,
   Folder as FolderIcon,
   Search,
-  Home,
+  Settings,
   Trash,
   MoreHorizontal,
   Edit,
   Image as ImageIcon,
   Plus,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -31,6 +34,11 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { UserItem } from "./user-item";
 import { Item } from "./item";
 import { WebsiteSwitcher } from "./website-switcher";
@@ -56,16 +64,34 @@ interface TreeNode {
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError, resetSidebarState } = useAppSidebar();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const search = useSearch();
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
 
-  const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
-  const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const document = useQuery(api.documents.getById,
     params.documentId ? { documentId: params.documentId as Id<"documents"> } : "skip"
   );
+
+  // Settings management
+  const { currentSection, setCurrentSection } = useSettings();
+  const template = useTemplateSchema(document?.theme);
+  const availableSections = getSectionsFromSchema(template?.settingsJsonSchema, template?.settingsUiSchema);
+
+  // Clear currentSection when navigating away from settings page
+  useEffect(() => {
+    const isOnSettingsPage = pathname.includes('/settings');
+    
+    // If we're not on a settings page and currentSection is set, clear it
+    if (!isOnSettingsPage && currentSection) {
+      setCurrentSection(null);
+    }
+  }, [pathname, currentSection, setCurrentSection]);
+
+  const fetchContentTree = useAction(api.github.fetchGitHubFileTree);
+  const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const deleteFile = useAction(api.github.deleteFile);
   const renameGithubPath = useAction(api.github.renamePathInRepo);
 
@@ -110,6 +136,31 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       setIsLoading(false);
     }
   }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
+
+  // Simple hash change handler for settings navigation
+  useEffect(() => {
+    const updateSettingsState = () => {
+      const hash = window.location.hash.slice(1);
+      const isOnSettingsPage = window.location.pathname.includes('/settings');
+
+      if (isOnSettingsPage) {
+        setIsSettingsOpen(true);
+        setCurrentSection(hash || null);
+      } else {
+        setIsSettingsOpen(false);
+        setCurrentSection(null);
+      }
+    };
+
+    window.addEventListener('hashchange', updateSettingsState);
+    window.addEventListener('popstate', updateSettingsState);
+    updateSettingsState(); // Initial state
+
+    return () => {
+      window.removeEventListener('hashchange', updateSettingsState);
+      window.removeEventListener('popstate', updateSettingsState);
+    };
+  }, [setCurrentSection]);
 
   useEffect(() => {
     async function loadFileTree() {
@@ -298,6 +349,40 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     }
   }, [params.documentId, renameGithubPath, refreshTree, router, params.path, setIsLoading]);
 
+  // Simplified scroll function
+  const scrollToSection = useCallback((sectionKey: string) => {
+    setTimeout(() => {
+      const element = window.document.getElementById(`root_${sectionKey}__title`);
+      if (element) {
+        const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo({ top: elementPosition - 100, behavior: 'smooth' });
+      }
+    }, 100);
+  }, []);
+
+  // Handle settings navigation
+  const handleSettingsNavigation = useCallback((sectionKey: string | null) => {
+    if (!params.documentId) return;
+
+    const settingsUrl = `/documents/${params.documentId}/settings`;
+    const isOnSettingsPage = window.location.pathname.includes('/settings');
+
+    // Update the currentSection state immediately
+    setCurrentSection(sectionKey);
+
+    if (sectionKey) {
+      const urlWithHash = `${settingsUrl}#${sectionKey}`;
+      if (isOnSettingsPage) {
+        window.location.hash = sectionKey;
+        scrollToSection(sectionKey);
+      } else {
+        router.push(urlWithHash);
+      }
+    } else {
+      router.push(settingsUrl);
+    }
+  }, [params.documentId, router, scrollToSection, setCurrentSection]);
+
   const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
 
@@ -387,15 +472,62 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         {params.documentId && (
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
-            <Item
-              label="Home"
-              icon={Home}
-              onClick={() => {
-                if (params.documentId) {
-                  router.push(`/documents/${params.documentId}`);
-                }
-              }}
-            />
+            {/* Settings with split button design */}
+            <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+              <div className="flex">
+                {/* Main Settings Button - Navigate to All Settings */}
+                <div
+                  className={`group min-h-[27px] text-sm py-1 pl-3 pr-1 flex-1 hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
+                    pathname.includes('/settings') && !currentSection
+                      ? "bg-primary/5 text-primary"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => handleSettingsNavigation(null)}
+                >
+                  <Settings className="shrink-0 h-[18px] w-[18px] mr-2 text-muted-foreground" />
+                  <span>Settings</span>
+                </div>
+                
+                {/* Separate Arrow Button - Toggle Submenu */}
+                <CollapsibleTrigger asChild>
+                  <div className="min-h-[27px] px-2 hover:bg-primary/5 flex items-center cursor-pointer text-muted-foreground">
+                    {!template && document?.theme ? (
+                      <Spinner size="sm" />
+                    ) : isSettingsOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                    )}
+                  </div>
+                </CollapsibleTrigger>
+                </div>
+              <CollapsibleContent>
+                <div className="pl-8 py-1 space-y-1">
+                  {availableSections.length > 0 ? (
+                    <>
+                      {/* Individual Sections Only */}
+                      {availableSections.map((section) => (
+                        <div
+                          key={section.key}
+                          className={`min-h-[27px] text-sm py-1 pr-3 w-full hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
+                            currentSection === section.key && pathname.includes('/settings')
+                              ? "bg-primary/5 text-primary"
+                              : "text-muted-foreground"
+                          }`}
+                          onClick={() => handleSettingsNavigation(section.key)}
+                        >
+                          <span>{section.title}</span>
+                  </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="min-h-[27px] text-sm py-1 pr-3 w-full flex items-center text-muted-foreground/50 font-medium">
+                      <span>No settings available</span>
+                  </div>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
             <Item
               label="Assets"
               icon={ImageIcon}
