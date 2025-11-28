@@ -121,7 +121,7 @@ export const createRepo = action({
     siteTemplate: v.string(),
    },
   handler: async (ctx, args) => {
-    console.log("Creating repo...");
+    console.log("Creating repo from template...");
     console.log("Site Name:", args.siteName);
     const identity = await ctx.auth.getUserIdentity();
 
@@ -135,169 +135,160 @@ export const createRepo = action({
       title: args.siteName,
     })
 
+    // Start fetching user early
+    const userPromise = clerkClient.users.getUser(identity.subject);
+
     const octokit = await getAppOctokit(ctx, args.repoName);
     try {
-      // Create a new repository in the organization
-      const response = await octokit.repos.createInOrg({
-        org: "hugity",
+      // 1. Create repository from template
+      const response = await octokit.repos.createUsingTemplate({
+        template_owner: "vovanukas",
+        template_repo: "doks-template",
+        owner: "hugity",
         name: args.repoName,
         private: false,
-        description: "Hugo site repository",
+        description: args.siteName,
+        include_all_branches: false
       });
 
       const repoUrl = response.data.html_url;
-      console.log("Repository created:", repoUrl);
+      console.log("Repository created from template:", repoUrl);
 
-      await ctx.runAction(api.github.encryptAndPublishSecret, ({
-        id: args.repoName,
-        secret: identity.subject,
-        secretName: 'CALLBACK_BEARER'
-      }))
+      // 2. Run independent tasks in parallel
+      await Promise.all([
+        // TASK A: Secrets (Required for the deploy.yml that comes with the template)
+        (async () => {
+          // Fetch key ONCE
+          const { data: publicKey } = await octokit.rest.actions.getRepoPublicKey({
+            owner: 'hugity',
+            repo: args.repoName,
+          });
 
-      await ctx.runAction(api.github.encryptAndPublishSecret, ({
-        id: args.repoName,
-        secret: process.env.GITHUB_TOKEN!,
-        secretName: 'WORKFLOW_TOKEN'
-      }))
+          await sodium.ready;
+          const binkey = sodium.from_base64(publicKey.key, sodium.base64_variants.ORIGINAL);
 
-      await ctx.runAction(api.github.encryptAndPublishSecret, ({
-        id: args.repoName,
-        secret: process.env.CONVEX_SITE_URL!,
-        secretName: 'CONVEX_SITE_URL'
-      }))
+          // Helper to encrypt and upload
+          const uploadSecret = async (name: string, value: string) => {
+            const binsec = sodium.from_string(value);
+            const encBytes = sodium.crypto_box_seal(binsec, binkey);
+            const encrypted_value = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
 
-      // Auto-accept collaboration flow: App invites user, user immediately accepts
-      const user = await clerkClient.users.getUser(identity.subject);
+            return octokit.rest.actions.createOrUpdateRepoSecret({
+              owner: 'hugity',
+              repo: args.repoName,
+              secret_name: name,
+              encrypted_value,
+              key_id: publicKey.key_id,
+            });
+          };
 
-      // Step 1: App adds user as collaborator (creates invitation)
-      await octokit.repos.addCollaborator({
-        owner: "hugity",
-        repo: args.repoName,
-        username: user.username!,
-        permission: "maintain",
-      });
+          // Upload secrets in parallel
+          await Promise.all([
+            uploadSecret('CALLBACK_BEARER', identity.subject),
+            uploadSecret('WORKFLOW_TOKEN', process.env.GITHUB_TOKEN!),
+            uploadSecret('CONVEX_SITE_URL', process.env.CONVEX_SITE_URL!)
+          ]);
+        })(),
 
-      await octokit.repos.createPagesSite({
-        owner: "hugity",
-        repo: args.repoName,
-        build_type: "workflow",
-      })
+        // TASK B: Collaboration & Invite
+        (async () => {
+          const user = await userPromise;
 
-      await octokit.repos.updateInformationAboutPagesSite({
-        owner: "hugity",
-        repo: args.repoName,
-        https_enforced: true,
-      });
-
-      // Add a GitHub Actions workflow to set up Hugo
-      const workflowContent = `
-name: Setup Hugo
-
-on: 
-  push:
-    branches:
-      - main
-
-jobs:
-  setup-hugo:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: \${{ secrets.WORKFLOW_TOKEN }}
-
-    - name: Configure Git user
-      run: |
-        git config --global user.name "GitHub Actions"
-        git config --global user.email "actions@github.com"
-
-    - name: Clone and extract site
-      run: |
-        # Create a temporary directory
-        TEMP_DIR=$(mktemp -d)
-        # Clone the sites repository
-        git clone https://github.com/vovanukas/hugo-sites.git $TEMP_DIR
-        # Copy the specific site contents
-        cp -r $TEMP_DIR/${args.siteTemplate}/* .
-        cp -r $TEMP_DIR/${args.siteTemplate}/.* . 2>/dev/null || true
-        # Clean up
-        rm -rf $TEMP_DIR
-
-    - name: Delete Workflow File
-      run: |
-        rm .github/workflows/hugo-setup.yml
-
-    - name: Commit and push changes
-      env:
-        GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-      run: |
-        git add .
-        git commit -m "Initial setup with ${args.siteTemplate} site"
-        git push https://x-access-token:\${{ secrets.GITHUB_TOKEN }}@github.com/hugity/\${{ github.event.repository.name }}.git main
-
-    - name: Notify on success
-      if: success()
-      uses: distributhor/workflow-webhook@v3
-      with:
-        webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-        webhook_auth_type: "bearer"
-        webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHING" }'
-
-    - name: Notify on failure
-      if: failure()
-      uses: distributhor/workflow-webhook@v3
-      with:
-        webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-        webhook_auth_type: "bearer"
-        webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-        data: '{ "buildStatus": "ERROR", "publishStatus": "ERROR" }'
-`;
-
-      // Commit the workflow file to the repository
-      await octokit.repos.createOrUpdateFileContents({
-        owner: "hugity", // Replace with your org name
-        repo: args.repoName, // Use the dynamic repo name
-        path: ".github/workflows/hugo-setup.yml",
-        message: "Add Hugo setup workflow",
-        content: Buffer.from(workflowContent).toString("base64"), // Encode to base64
-      });
-
-      // Step 2: User immediately accepts their own invitation (before they see email)
-      const userOctokit = await getUserOctokit(ctx);
-
-      const invitations = await userOctokit.repos.listInvitationsForAuthenticatedUser();
-      console.log("Invitations:", invitations.data);
-      const targetInvitation = invitations.data.find(inv =>
-        inv.repository.name === args.repoName
-      );
-
-      if (targetInvitation) {
-        await userOctokit.repos.acceptInvitationForAuthenticatedUser({
-          invitation_id: targetInvitation.id
-        });
-        console.log(`Auto-accepted collaboration invitation for ${args.repoName}`);
-
-        // CRITICAL: Immediately unwatch the repository to prevent workflow notifications
-        try {
-          await userOctokit.activity.setRepoSubscription({
+          // Add collaborator
+          await octokit.repos.addCollaborator({
             owner: "hugity",
             repo: args.repoName,
-            subscribed: false,
-            ignored: true
+            username: user.username!,
+            permission: "maintain",
           });
-          console.log(`User unsubscribed from notifications for ${args.repoName}`);
-        } catch (unsubscribeError) {
-          console.warn("Failed to unsubscribe from repository notifications:", unsubscribeError);
+
+          // Accept invitation immediately
+          const userOctokit = await getUserOctokit(ctx);
+          const invitations = await userOctokit.repos.listInvitationsForAuthenticatedUser();
+          const targetInvitation = invitations.data.find(inv =>
+            inv.repository.name === args.repoName
+          );
+
+          if (targetInvitation) {
+            await userOctokit.repos.acceptInvitationForAuthenticatedUser({
+              invitation_id: targetInvitation.id
+            });
+            console.log(`Auto-accepted collaboration invitation for ${args.repoName}`);
+
+            try {
+              await userOctokit.activity.setRepoSubscription({
+                owner: "hugity",
+                repo: args.repoName,
+                subscribed: false,
+                ignored: true
+              });
+              console.log(`User unsubscribed from notifications for ${args.repoName}`);
+            } catch (unsubscribeError) {
+              console.warn("Failed to unsubscribe from repository notifications:", unsubscribeError);
+            }
+          }
+        })(),
+
+        // TASK C: GitHub Pages Setup
+        (async () => {
+          await octokit.repos.createPagesSite({
+            owner: "hugity",
+            repo: args.repoName,
+            build_type: "workflow",
+          });
+
+          await octokit.repos.updateInformationAboutPagesSite({
+            owner: "hugity",
+            repo: args.repoName,
+            https_enforced: true,
+          });
+        })()
+      ]);
+
+      // 3. Post-creation cleanup and trigger
+
+      // Mark provisioning as complete
+      await ctx.runMutation(api.documents.update, {
+        id: args.repoName,
+        buildStatus: "BUILT",
+        publishStatus: "PUBLISHING",
+      });
+
+      // Trigger initial deployment manually to ensure it runs WITH the secrets we just added
+      // (The auto-trigger from creation might fail or run before secrets were available)
+      try {
+        const { data: workflows } = await octokit.actions.listRepoWorkflows({
+          owner: "hugity",
+          repo: args.repoName,
+        });
+
+        const deployWorkflow = workflows.workflows.find(w =>
+          w.name.toLowerCase().includes('deploy') ||
+          w.path.includes('deploy') ||
+          w.name.toLowerCase().includes('hugo')
+        );
+
+        if (deployWorkflow) {
+          await octokit.actions.createWorkflowDispatch({
+            owner: "hugity",
+            repo: args.repoName,
+            workflow_id: deployWorkflow.id,
+            ref: "main",
+            inputs: {
+              callbackUrl: process.env.CONVEX_SITE_URL! + "/callbackPageDeployed",
+            }
+          });
+          console.log("Triggered initial deployment workflow:", deployWorkflow.name);
         }
+      } catch (dispatchError) {
+        console.warn("Failed to trigger initial deployment:", dispatchError);
+        // Non-fatal, user can trigger manually later or next push will handle it
       }
 
       return repoUrl;
     } catch (error) {
       console.error("Error creating repository or adding workflow:", error);
-      throw new Error("Failed to create repository and set up workflow");
+      throw new Error("Failed to create repository from template");
     }
   },
 });
@@ -1063,35 +1054,56 @@ export const fetchGitHubFileTree = action({
   handler: async (ctx, args) => {
     const octokit = await getUserOctokit(ctx);
 
-    try {
-      // Step 1: Get the entire tree of the main branch
-      const { data: mainTree } = await octokit.git.getTree({
-        owner: "hugity",
-        repo: args.id,
-        tree_sha: "main",
-        recursive: "false", // Fetch only the top-level directories
-      });
+    let retries = 10;
+    let delay = 1000; // Start with 1 second
 
-      // Step 2: Find the SHA of the "content" folder
-      const contentFolder = mainTree.tree.find((item: any) =>
-        item.path === "content" && item.type === "tree"
-      );
+    while (retries > 0) {
+      try {
+        // Step 1: Get the entire tree of the main branch
+        const { data: mainTree } = await octokit.git.getTree({
+          owner: "hugity",
+          repo: args.id,
+          tree_sha: "main",
+          recursive: "false", // Fetch only the top-level directories
+        });
 
-      if (!contentFolder || !contentFolder.sha) {
-        throw new Error("Content folder not found");
+        // Step 2: Find the SHA of the "content" folder
+        const contentFolder = mainTree.tree.find((item: any) =>
+          item.path === "content" && item.type === "tree"
+        );
+
+        if (!contentFolder || !contentFolder.sha) {
+          throw new Error("Content folder not found");
+        }
+
+        // Step 3: Fetch the tree for the "content" directory using the SHA
+        const { data: contentTree } = await octokit.git.getTree({
+          owner: "hugity",
+          repo: args.id,
+          tree_sha: contentFolder.sha,
+          recursive: "true", // Now we fetch inside the content folder
+        });
+        return contentTree.tree;
+      } catch (error: any) {
+        // Check for "Git Repository is empty" (409) or "Not Found" (404) which can happen during init
+        const isRetryable =
+          error.status === 409 ||
+          (error.response && error.response.status === 409) ||
+          error.status === 404 ||
+          (error.response && error.response.status === 404) ||
+          error.message === "Content folder not found";
+
+        if (isRetryable && retries > 1) {
+          console.log(`Repo not ready yet (Status: ${error.status || 'Unknown'}, Msg: ${error.message}). Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          retries--;
+          delay *= 1.5; // Exponential backoff
+          continue;
+        }
+
+        console.error("Error fetching GitHub content folder tree:", error);
+        throw new Error("Failed to fetch GitHub content folder tree");
       }
-
-      // Step 3: Fetch the tree for the "content" directory using the SHA
-      const { data: contentTree } = await octokit.git.getTree({
-        owner: "hugity",
-        repo: args.id,
-        tree_sha: contentFolder.sha,
-        recursive: "true", // Now we fetch inside the content folder
-      });
-      return contentTree.tree;
-    } catch (error) {
-      console.error("Error fetching GitHub content folder tree:", error);
-      throw new Error("Failed to fetch GitHub content folder tree");
     }
   }
 });

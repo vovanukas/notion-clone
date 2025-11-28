@@ -13,8 +13,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useThemeSelector } from "@/hooks/use-theme-selector";
-import { useTemplateSelector } from "@/hooks/use-template-selector";
-import { TemplateSelectorModal } from "./template-selector-modal";
 import { toast } from "sonner";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -24,7 +22,6 @@ import { Crown } from "lucide-react";
 
 export const ThemeSelectorModal = () => {
   const themeSelector = useThemeSelector();
-  const templateSelector = useTemplateSelector();
   const [siteName, setSiteName] = useState("");
   const create = useMutation(api.documents.create);
   const createRepo = useAction(api.github.createRepo);
@@ -35,21 +32,16 @@ export const ThemeSelectorModal = () => {
   const isPremium = user?.publicMetadata?.isPremium === true;
   const hasReachedLimit = !isPremium && siteCount !== undefined && siteCount >= 2;
 
-  const handleChooseTemplate = () => {
-    themeSelector.onClose();
-    templateSelector.onOpen();
-  };
-
   const handleCreateWebsite = () => {
     const promise = create({
       title: siteName,
-      theme: templateSelector.selectedTemplate!
+      theme: "doks-template"
     }).then((documentId) => {
       router.push(`/documents/${documentId}`);
       return createRepo({
         repoName: documentId,
         siteName: siteName || "Untitled",
-        siteTemplate: templateSelector.selectedTemplate!
+        siteTemplate: "doks-template"
       });
     });
 
@@ -59,7 +51,6 @@ export const ThemeSelectorModal = () => {
       error: "Failed to create a new website.",
     });
     setSiteName("");
-    templateSelector.onSelect(null);
     themeSelector.onClose();
   };
 
@@ -102,43 +93,41 @@ export const ThemeSelectorModal = () => {
 
   // Normal site creation flow
   return (
-    <>
-      <Dialog open={themeSelector.isOpen} onOpenChange={themeSelector.onClose}>
-        <DialogContent className="sm:max-w-[425px] flex flex-col min-h-[300px]">
-          <DialogHeader>
-            <DialogTitle>Create New Website</DialogTitle>
-            <DialogDescription>
-              {templateSelector.selectedTemplate
-                ? `Using template: ${templateSelector.selectedTemplate} - Now give your website a name`
-                : "Start by choosing a template, then give your website a name"
-              }
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={themeSelector.isOpen} onOpenChange={themeSelector.onClose}>
+      <DialogContent className="sm:max-w-[425px] flex flex-col min-h-[300px]">
+        <DialogHeader>
+          <DialogTitle>Create New Website</DialogTitle>
+          <DialogDescription>
+            Give your new website a name to get started.
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="grid gap-4 py-4 flex-1">
-            <div className="grid gap-2">
-              <Label htmlFor="site-name">Website Name *</Label>
-              <Input
-                id="site-name"
-                placeholder="Untitled"
-                value={siteName}
-                onChange={(e) => setSiteName(e.target.value)}
-              />
-            </div>
+        <div className="grid gap-4 py-4 flex-1">
+          <div className="grid gap-2">
+            <Label htmlFor="site-name">Website Name *</Label>
+            <Input
+              id="site-name"
+              placeholder="Untitled"
+              value={siteName}
+              onChange={(e) => setSiteName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleCreateWebsite();
+                }
+              }}
+            />
           </div>
+        </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-auto">
-            <Button variant="outline" onClick={themeSelector.onClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleChooseTemplate}>
-              Choose Template
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <TemplateSelectorModal onConfirm={handleCreateWebsite} />
-    </>
+        <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-auto">
+          <Button variant="outline" onClick={themeSelector.onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreateWebsite}>
+            Create Website
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }; 
