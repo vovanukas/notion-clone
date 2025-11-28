@@ -35,13 +35,13 @@ export const ThemeSelectorModal = () => {
   const handleCreateWebsite = () => {
     const promise = create({
       title: siteName,
-      theme: "doks-template"
+      theme: "doks"
     }).then((documentId) => {
       router.push(`/documents/${documentId}`);
       return createRepo({
         repoName: documentId,
         siteName: siteName || "Untitled",
-        siteTemplate: "doks-template"
+        templateRepo: "doks-template"
       });
     });
 

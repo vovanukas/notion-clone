@@ -118,7 +118,7 @@ export const createRepo = action({
   args: { 
     repoName: v.id("documents"),
     siteName: v.string(),
-    siteTemplate: v.string(),
+    templateRepo: v.string(),
    },
   handler: async (ctx, args) => {
     console.log("Creating repo from template...");
@@ -143,7 +143,7 @@ export const createRepo = action({
       // 1. Create repository from template
       const response = await octokit.repos.createUsingTemplate({
         template_owner: "vovanukas",
-        template_repo: "doks-template",
+        template_repo: args.templateRepo,
         owner: "hugity",
         name: args.repoName,
         private: false,
