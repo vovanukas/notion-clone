@@ -67,14 +67,16 @@ export const FolderItem = ({ item }: FolderItemProps) => {
       let result = await fetchContentTree({
         id: documentId as import("@/convex/_generated/dataModel").Id<"documents">,
       });
-      result = result
-        .map((item: { path?: string; type?: string; sha?: string }) => ({
-          path: typeof item.path === "string" ? item.path : "",
-          type: typeof item.type === "string" ? item.type : "blob",
-          sha: typeof item.sha === "string" ? item.sha : "",
-        }))
-        .filter((item: { path: string; type: string; sha: string }) => item.path && item.type && item.sha);
-      setItems(result as GitHubList[]);
+      if (result) {
+        result = result
+          .map((item: { path?: string; type?: string; sha?: string }) => ({
+            path: typeof item.path === "string" ? item.path : "",
+            type: typeof item.type === "string" ? item.type : "blob",
+            sha: typeof item.sha === "string" ? item.sha : "",
+          }))
+          .filter((item: { path: string; type: string; sha: string }) => item.path && item.type && item.sha);
+        setItems(result as GitHubList[]);
+      }
       setError(null);
     } catch (err) {
       setError("Failed to refresh sidebar. Please try again.");
@@ -102,14 +104,16 @@ export const FolderItem = ({ item }: FolderItemProps) => {
       let result = await fetchContentTree({
         id: documentId as import("@/convex/_generated/dataModel").Id<"documents">,
       });
-      result = result
-        .map((item: { path?: string; type?: string; sha?: string }) => ({
-          path: typeof item.path === "string" ? item.path : "",
-          type: typeof item.type === "string" ? item.type : "blob",
-          sha: typeof item.sha === "string" ? item.sha : "",
-        }))
-        .filter((item: { path: string; type: string; sha: string }) => item.path && item.type && item.sha);
-      setItems(result as GitHubList[]);
+      if (result) {
+        result = result
+          .map((item: { path?: string; type?: string; sha?: string }) => ({
+            path: typeof item.path === "string" ? item.path : "",
+            type: typeof item.type === "string" ? item.type : "blob",
+            sha: typeof item.sha === "string" ? item.sha : "",
+          }))
+          .filter((item: { path: string; type: string; sha: string }) => item.path && item.type && item.sha);
+        setItems(result as GitHubList[]);
+      }
       setError(null);
     } catch (err) {
       setError("Failed to refresh sidebar. Please try again.");
