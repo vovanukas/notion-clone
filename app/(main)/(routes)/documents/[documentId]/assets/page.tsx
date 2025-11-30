@@ -92,7 +92,27 @@ export default function AssetsPage() {
             sha: item.sha,
             size: item.size || 0,
             name: item.path.split('/').pop() || item.path,
-          }));
+          }))
+          .sort((a: AssetItem, b: AssetItem) => {
+            // Try to extract timestamp from filename (format: name-timestamp-random.ext)
+            // Timestamp is 13 digits (Date.now())
+            const timestampRegex = /-(\d{13})-[a-z0-9]{6}\.[^.]+$/i;
+
+            const matchA = a.name.match(timestampRegex);
+            const matchB = b.name.match(timestampRegex);
+
+            // Use timestamp if available, otherwise 0
+            const timeA = matchA ? parseInt(matchA[1]) : 0;
+            const timeB = matchB ? parseInt(matchB[1]) : 0;
+
+            // Sort by timestamp descending (newest first)
+            if (timeA !== timeB) {
+              return timeB - timeA;
+            }
+
+            // Fallback to alphabetical sort
+            return a.name.localeCompare(b.name);
+          });
         setAssets(processedAssets);
       } else {
         setAssets([]);
