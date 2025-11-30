@@ -76,7 +76,16 @@ export default function AssetsPage() {
       
       if (result && result.length > 0) {
         const processedAssets = result
-          .filter((item: any) => item.type === 'blob') // Only show files, not folders
+          .filter((item: any) => {
+            if (item.type !== 'blob') return false;
+
+            const fileName = item.path.split('/').pop() || '';
+            if (fileName.startsWith('.')) return false;
+
+            const isInImages = item.path.includes('/images/');
+
+            return isInImages;
+          })
           .map((item: any) => ({
             path: item.path,
             type: item.type,
