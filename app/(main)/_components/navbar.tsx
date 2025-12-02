@@ -109,7 +109,7 @@ export const Navbar = () => {
 
   return (
     <>
-      <nav className="z-[99999] h-[--header-height] bg-background sticky top-0 dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center gap-x-4">
+      <nav className="z-50 h-[--header-height] bg-background sticky top-0 dark:bg-[#1f1f1f] px-3 py-2 w-full flex items-center gap-x-4">
         <div className="flex h-[--header-height] w-full items-center gap-2 px-4">
           <Button
             className="h-8 w-8"

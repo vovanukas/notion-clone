@@ -231,3 +231,8 @@ body,
 .bn-inline-content a:visited:hover {
   color: hsl(280 65% 85%) !important; /* lighter purple on hover for visited links */
 }
+
+/* Prevent body scroll when BlockNote menus are open */
+body:has(.bn-suggestion-menu) {
+  overflow: hidden;
+}
