@@ -10,6 +10,12 @@ import {
     FileReplaceButton,
     FormattingToolbar,
     FormattingToolbarController,
+    DragHandleMenu,
+    RemoveBlockItem,
+    SideMenu,
+    SideMenuController,
+    AddBlockButton,
+    DragHandleButton,
     useCreateBlockNote
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -39,6 +45,13 @@ const generateUniqueFilename = (originalFilename: string): string => {
 
 // 5MB file size limit
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+
+// Custom drag handle menu without Colors (colors not supported in Hugo markdown)
+const CustomDragHandleMenu = () => (
+    <DragHandleMenu>
+        <RemoveBlockItem>Delete</RemoveBlockItem>
+    </DragHandleMenu>
+);
 
 const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     const { resolvedTheme } = useTheme();
@@ -85,12 +98,8 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
-                console.log('📝 Initial markdown:', initialContent);
-                // Content is already preprocessed by the document store
                 const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
-                console.log('🔄 Parsed blocks:', blocks);
                 editor.replaceBlocks(editor.document, blocks);
-                console.log('📄 Editor blocks after replace:', editor.document);
                 isInitialMount.current = false;
             }
             parseAndSetContent();
@@ -112,6 +121,7 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
                 editable={editable}
                 onChange={handleEditorChange}
                 formattingToolbar={false}
+                sideMenu={false}
             >
                 <FormattingToolbarController
                     formattingToolbar={() => (
@@ -136,6 +146,14 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
 
                         <CreateLinkButton key={"createLinkButton"} />
                     </FormattingToolbar>
+                    )}
+                />
+                <SideMenuController
+                    sideMenu={(props) => (
+                        <SideMenu {...props}>
+                            <AddBlockButton />
+                            <DragHandleButton dragHandleMenu={CustomDragHandleMenu} />
+                        </SideMenu>
                     )}
                 />
             </BlockNoteView>
