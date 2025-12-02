@@ -21,6 +21,7 @@ import {
   Plus,
   ChevronRight,
   ChevronDown,
+  Home,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -500,12 +501,24 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           children = children?.filter(c => c !== indexFile);
       }
 
-      const name = typedNode.name || (typedNode.path ? typedNode.path.split('/').pop() : 'Unnamed');
+      let name = typedNode.name || (typedNode.path ? typedNode.path.split('/').pop() : 'Unnamed');
+      
+      // Strip .md extension from the name for display
+      if (name && name.endsWith('.md')) {
+        name = name.replace(/\.md$/, '');
+      }
+
       const id = typedNode.sha || typedNode.path || String(Math.random());
 
       // In "Notion-like" view, everything looks like a File (Page).
       // Folders are just Pages that happen to have children.
-      const icon = FileIcon;
+      let icon = FileIcon;
+
+      // Special case for root _index.md -> Home Page
+      if (name === '_index') {
+        name = 'Home Page';
+        icon = Home;
+      }
 
       // If children array is empty after filtering, we treat it as having no children (leaf)
       const hasChildren = children && children.length > 0;
