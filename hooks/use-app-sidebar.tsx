@@ -15,6 +15,7 @@ type AppSidebarStore = {
 
   // Track expanded folder paths (using path as stable identifier)
   expandedPaths: Set<string>;
+  collapsedPaths: Set<string>; // Track explicitly collapsed paths (overrides soft expand)
 
   setItems: (items: GitHubList[]) => void;
   getNodeByPath: (path: string) => HugoFileNode | undefined;
@@ -24,9 +25,10 @@ type AppSidebarStore = {
   resetSidebarState: () => void;
 
   // Expanded state management
-  toggleExpanded: (path: string) => void;
+  toggleExpanded: (path: string, currentlyExpanded: boolean) => void;
   setExpanded: (path: string, expanded: boolean) => void;
   isExpanded: (path: string) => boolean;
+  isCollapsed: (path: string) => boolean;
 };
 
 export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
@@ -35,6 +37,7 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
   isLoading: false,
   error: null,
   expandedPaths: new Set(),
+  collapsedPaths: new Set(),
 
   setItems: (items) => {
     set({ items });
@@ -111,29 +114,28 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
       isLoading: false,
       error: null,
       expandedPaths: new Set(),
+      collapsedPaths: new Set(),
     }),
 
-  toggleExpanded: (path) => {
-    const { expandedPaths } = get();
-    const newExpanded = new Set(expandedPaths);
-    if (newExpanded.has(path)) {
-      newExpanded.delete(path);
-    } else {
-      newExpanded.add(path);
-    }
-    set({ expandedPaths: newExpanded });
+  toggleExpanded: (path, currentlyExpanded) => {
+    get().setExpanded(path, !currentlyExpanded);
   },
 
   setExpanded: (path, expanded) => {
-    const { expandedPaths } = get();
+    const { expandedPaths, collapsedPaths } = get();
     const newExpanded = new Set(expandedPaths);
+    const newCollapsed = new Set(collapsedPaths);
+
     if (expanded) {
       newExpanded.add(path);
+      newCollapsed.delete(path);
     } else {
       newExpanded.delete(path);
+      newCollapsed.add(path);
     }
-    set({ expandedPaths: newExpanded });
+    set({ expandedPaths: newExpanded, collapsedPaths: newCollapsed });
   },
 
   isExpanded: (path) => get().expandedPaths.has(path),
+  isCollapsed: (path) => get().collapsedPaths.has(path),
 }));

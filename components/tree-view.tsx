@@ -6,6 +6,7 @@ import { ChevronRight } from 'lucide-react'
 import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { useAppSidebar } from '@/hooks/use-app-sidebar'
+import { usePathname } from 'next/navigation'
 
 const treeVariants = cva(
     'group hover:before:opacity-100 before:absolute before:rounded-lg before:left-0 px-2 before:w-full before:opacity-0 before:bg-accent/70 before:h-[2rem] before:-z-10'
@@ -231,17 +232,48 @@ const TreeNode = ({
     draggedItem: TreeDataItem | null
 }) => {
     // Use the store for expanded state if path is available, otherwise fall back to local state
-    const { isExpanded, toggleExpanded } = useAppSidebar()
+    const { isExpanded, isCollapsed, toggleExpanded } = useAppSidebar()
+    const pathname = usePathname()
 
-    // Check if this item should be expanded (from store or initial props)
-    const isItemExpanded = item.path ? isExpanded(item.path) : expandedItemIds.includes(item.id)
+    // Extract active content path from URL
+    // URL format: /documents/[documentId]/[...filePath]
+    // e.g., /documents/abc123/blog/_index.md -> blog/_index.md
+    const pathMatch = pathname?.match(/\/documents\/[^/]+\/(.+)/)
+    const activePath = pathMatch ? decodeURIComponent(pathMatch[1]) : null
+
+    // Calculate soft expansion based on active path
+    let isSoftExpanded = false
+    if (item.path && activePath) {
+        // Normalize item path: treat folder/index.md as just folder
+        // Also strip 'content/' prefix if present for consistency
+        const itemFolderPath = item.path.replace(/^content\//, '').replace(/\/(?:_)?index\.md$/, '')
+
+        // Expand if this item is an ancestor of the active path OR is the active path itself
+        // We append '/' to ensure partial matches (like 'blog' matching 'blog-post') are avoided
+        const startsWithCheck = activePath.startsWith(itemFolderPath + '/')
+        const equalsCheck = activePath === itemFolderPath
+
+        if (startsWithCheck || equalsCheck) {
+            isSoftExpanded = true
+        }
+    }
+
+    // Check if this item should be expanded (from store or soft expand or initial props)
+    // Logic:
+    // 1. Explicitly expanded (store) -> Expanded
+    // 2. Soft expanded AND NOT explicitly collapsed (store) -> Expanded
+    // 3. Otherwise -> Collapsed
+    const isItemExpanded = item.path
+        ? (isExpanded(item.path) || (isSoftExpanded && !isCollapsed(item.path)))
+        : expandedItemIds.includes(item.id)
+
     const value = isItemExpanded ? [item.id] : []
 
     const [isDragOver, setIsDragOver] = React.useState(false)
 
     const handleToggleExpand = () => {
         if (item.path) {
-            toggleExpanded(item.path)
+            toggleExpanded(item.path, !!isItemExpanded)
         }
     }
 
@@ -428,26 +460,6 @@ const TreeLeaf = React.forwardRef<
 )
 TreeLeaf.displayName = 'TreeLeaf'
 
-const AccordionTrigger = React.forwardRef<
-    React.ElementRef<typeof AccordionPrimitive.Trigger>,
-    React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-    <AccordionPrimitive.Header>
-        <AccordionPrimitive.Trigger
-            ref={ref}
-            className={cn(
-                'flex flex-1 w-full items-center py-2 transition-all first:[&[data-state=open]>svg]:rotate-90',
-                className
-            )}
-            {...props}
-        >
-            <ChevronRight className="h-4 w-4 shrink-0 transition-transform duration-200 text-accent-foreground/50 mr-1" />
-            {children}
-        </AccordionPrimitive.Trigger>
-    </AccordionPrimitive.Header>
-))
-AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
-
 const AccordionContent = React.forwardRef<
     React.ElementRef<typeof AccordionPrimitive.Content>,
     React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
@@ -499,7 +511,7 @@ const TreeActions = ({
     return (
         <div
             className={cn(
-                'absolute right-3 group-hover:block'
+                'absolute right-3 hidden group-hover:block'
             )}
         >
             {children}
