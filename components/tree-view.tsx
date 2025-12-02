@@ -312,7 +312,7 @@ const TreeNode = ({
             <AccordionPrimitive.Item value={item.id}>
                 <div
                     className={cn(
-                        "flex items-center relative",
+                        "flex items-center",
                         treeVariants(),
                         selectedItemId === item.id && selectedTreeVariants(),
                         isDragOver && dragOverVariants()
@@ -509,11 +509,7 @@ const TreeActions = ({
     children: React.ReactNode
 }) => {
     return (
-        <div
-            className={cn(
-                'absolute right-3 hidden group-hover:block'
-            )}
-        >
+        <div className="flex items-center shrink-0 ml-auto pl-2">
             {children}
         </div>
     )

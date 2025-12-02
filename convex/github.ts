@@ -193,8 +193,9 @@ export const createRepo = action({
         // TASK B: Collaboration & Invite
         (async () => {
           const user = await userPromise;
+          const userOctokit = await getUserOctokit(ctx);
 
-          // Add collaborator
+          // Add collaborator (for non-org members, this creates an invitation)
           await octokit.repos.addCollaborator({
             owner: "hugity",
             repo: args.repoName,
@@ -202,8 +203,7 @@ export const createRepo = action({
             permission: "maintain",
           });
 
-          // Accept invitation immediately
-          const userOctokit = await getUserOctokit(ctx);
+          // Accept invitation if one was created (non-org members)
           const invitations = await userOctokit.repos.listInvitationsForAuthenticatedUser();
           const targetInvitation = invitations.data.find(inv =>
             inv.repository.name === args.repoName
@@ -214,18 +214,20 @@ export const createRepo = action({
               invitation_id: targetInvitation.id
             });
             console.log(`Auto-accepted collaboration invitation for ${args.repoName}`);
+          } else {
+            console.log(`No invitation needed for ${args.repoName} (user is likely an org member)`);
+          }
 
-            try {
-              await userOctokit.activity.setRepoSubscription({
-                owner: "hugity",
-                repo: args.repoName,
-                subscribed: false,
-                ignored: true
-              });
-              console.log(`User unsubscribed from notifications for ${args.repoName}`);
-            } catch (unsubscribeError) {
-              console.warn("Failed to unsubscribe from repository notifications:", unsubscribeError);
-            }
+          // Always set repo to ignored - works for both org members and external collaborators
+          try {
+            await userOctokit.activity.setRepoSubscription({
+              owner: "hugity",
+              repo: args.repoName,
+              ignored: true,
+            });
+            console.log(`User set to ignore notifications for ${args.repoName}`);
+          } catch (error) {
+            console.error("Failed to set ignore notifications for repository:", error);
           }
         })(),
 
