@@ -5,6 +5,7 @@ import * as AccordionPrimitive from '@radix-ui/react-accordion'
 import { ChevronRight } from 'lucide-react'
 import { cva } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
+import { useAppSidebar } from '@/hooks/use-app-sidebar'
 
 const treeVariants = cva(
     'group hover:before:opacity-100 before:absolute before:rounded-lg before:left-0 px-2 before:w-full before:opacity-0 before:bg-accent/70 before:h-[2rem] before:-z-10'
@@ -21,6 +22,7 @@ const dragOverVariants = cva(
 interface TreeDataItem {
     id: string
     name: string
+    path?: string  // Used for stable expanded state tracking
     icon?: any
     selectedIcon?: any
     openIcon?: any
@@ -228,10 +230,20 @@ const TreeNode = ({
     handleDrop?: (item: TreeDataItem) => void
     draggedItem: TreeDataItem | null
 }) => {
-    const [value, setValue] = React.useState(
-        expandedItemIds.includes(item.id) ? [item.id] : []
-    )
+    // Use the store for expanded state if path is available, otherwise fall back to local state
+    const { isExpanded, toggleExpanded } = useAppSidebar()
+
+    // Check if this item should be expanded (from store or initial props)
+    const isItemExpanded = item.path ? isExpanded(item.path) : expandedItemIds.includes(item.id)
+    const value = isItemExpanded ? [item.id] : []
+
     const [isDragOver, setIsDragOver] = React.useState(false)
+
+    const handleToggleExpand = () => {
+        if (item.path) {
+            toggleExpanded(item.path)
+        }
+    }
 
     const onDragStart = (e: React.DragEvent) => {
         if (!item.draggable) {
@@ -263,7 +275,7 @@ const TreeNode = ({
         <AccordionPrimitive.Root
             type="multiple"
             value={value}
-            onValueChange={(s) => setValue(s)}
+            onValueChange={() => handleToggleExpand()}
         >
             <AccordionPrimitive.Item value={item.id}>
                 <div
@@ -298,7 +310,7 @@ const TreeNode = ({
                         <TreeIcon
                             item={item}
                             isSelected={selectedItemId === item.id}
-                            isOpen={value.includes(item.id)}
+                            isOpen={isItemExpanded}
                             default={defaultNodeIcon}
                         />
                         <span className="text-sm truncate">{item.name}</span>

@@ -13,12 +13,20 @@ type AppSidebarStore = {
   isLoading: boolean;
   error: string | null;
 
+  // Track expanded folder paths (using path as stable identifier)
+  expandedPaths: Set<string>;
+
   setItems: (items: GitHubList[]) => void;
   getNodeByPath: (path: string) => HugoFileNode | undefined;
   buildTree: () => void;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   resetSidebarState: () => void;
+
+  // Expanded state management
+  toggleExpanded: (path: string) => void;
+  setExpanded: (path: string, expanded: boolean) => void;
+  isExpanded: (path: string) => boolean;
 };
 
 export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
@@ -26,6 +34,7 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
   treeData: [],
   isLoading: false,
   error: null,
+  expandedPaths: new Set(),
 
   setItems: (items) => {
     set({ items });
@@ -101,5 +110,30 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
       treeData: [],
       isLoading: false,
       error: null,
+      expandedPaths: new Set(),
     }),
+
+  toggleExpanded: (path) => {
+    const { expandedPaths } = get();
+    const newExpanded = new Set(expandedPaths);
+    if (newExpanded.has(path)) {
+      newExpanded.delete(path);
+    } else {
+      newExpanded.add(path);
+    }
+    set({ expandedPaths: newExpanded });
+  },
+
+  setExpanded: (path, expanded) => {
+    const { expandedPaths } = get();
+    const newExpanded = new Set(expandedPaths);
+    if (expanded) {
+      newExpanded.add(path);
+    } else {
+      newExpanded.delete(path);
+    }
+    set({ expandedPaths: newExpanded });
+  },
+
+  isExpanded: (path) => get().expandedPaths.has(path),
 }));

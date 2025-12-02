@@ -97,27 +97,17 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const renameGithubPath = useAction(api.github.renamePathInRepo);
   const fetchFileContent = useAction(api.github.fetchAndReturnGithubFileContent);
 
-  const refreshTree = useCallback(async () => {
-    if (!params.documentId) {
-      resetSidebarState();
-      return;
-    }
+  // Silent refresh - updates tree data without showing loading skeleton
+  // Used after creating/deleting items to preserve UX
+  const silentRefreshTree = useCallback(async () => {
+    if (!params.documentId) return;
 
-    setIsLoading(true);
     try {
-      const promise = fetchContentTree({
+      const result = await fetchContentTree({
         id: params.documentId as Id<"documents">,
       });
 
-      toast.promise(promise, {
-        loading: "Refreshing file tree...",
-        success: "File tree refreshed successfully!",
-        error: "Failed to refresh file tree. Please try again."
-      });
-
-      const result = await promise;
       if (!result || result.length === 0) {
-        resetSidebarState();
         return;
       }
 
@@ -131,13 +121,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       setItems(processedResult as GitHubList[]);
       setError(null);
     } catch (err) {
-      console.error("Failed to fetch GitHub file tree:", err);
-      setError("Failed to load file structure. Please try again later.");
-      resetSidebarState();
-    } finally {
-      setIsLoading(false);
+      console.error("Failed to refresh GitHub file tree:", err);
+      // Don't show error for silent refresh - the tree still has old data
     }
-  }, [params.documentId, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
+  }, [params.documentId, fetchContentTree, setItems, setError]);
 
   // Simple hash change handler for settings navigation
   useEffect(() => {
@@ -214,8 +201,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     const pageName = window.prompt("Enter new page name:");
     if (!pageName) return;
 
-    setIsLoading(true);
-
     // If no parent, create at root level as a simple .md file
     // If parent exists, create inside the parent folder
     const filePath = parentPath
@@ -239,14 +224,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
 
       await promise;
-      await refreshTree();
+      await silentRefreshTree();
     } catch (err) {
       console.error("Failed to create page:", err);
       setError("Failed to create page.");
-    } finally {
-      setIsLoading(false);
     }
-  }, [params.documentId, createMarkdownFile, refreshTree, setError, setIsLoading, template]);
+  }, [params.documentId, createMarkdownFile, silentRefreshTree, setError, template]);
 
   // Add a subpage to an existing page
   // If the page is a file (.md), we need to convert it to a folder first
@@ -255,8 +238,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
 
     const subpageName = window.prompt("Enter subpage name:");
     if (!subpageName) return;
-
-    setIsLoading(true);
 
     try {
       if (itemType === "tree") {
@@ -283,6 +264,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         // 2. Create a new folder with _index.md containing the original content
         // 3. Create the new subpage
         // 4. Delete the original file
+
+        toast.loading("Converting to page with subpage...");
 
         // Get the original content
         const originalContent = await fetchFileContent({
@@ -314,18 +297,18 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           filePath: `content/${itemPath}`,
         });
 
+        toast.dismiss();
         toast.success(`Converted "${itemName}" to a page with subpage "${subpageName}"!`);
       }
 
-      await refreshTree();
+      await silentRefreshTree();
     } catch (err) {
       console.error("Failed to add subpage:", err);
+      toast.dismiss();
       toast.error("Failed to add subpage. Please try again.");
       setError("Failed to add subpage.");
-    } finally {
-      setIsLoading(false);
     }
-  }, [params.documentId, createMarkdownFile, deleteFile, fetchFileContent, refreshTree, setError, setIsLoading, template]);
+  }, [params.documentId, createMarkdownFile, deleteFile, fetchFileContent, silentRefreshTree, setError, template]);
 
   const handleDeleteItem = useCallback(async (itemPath: string | undefined) => {
     if (!itemPath || !params.documentId) return;
@@ -333,7 +316,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     const confirmDelete = window.confirm("Are you sure you want to delete this item permanently? This action cannot be undone.");
     if (!confirmDelete) return;
 
-    setIsLoading(true);
     try {
       const promise = deleteFile({
         id: params.documentId as Id<"documents">,
@@ -347,14 +329,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
 
       await promise;
-      await refreshTree();
+      await silentRefreshTree();
     } catch (err) {
       console.error("Failed to delete item:", err);
       setError("Failed to delete item.");
-    } finally {
-      setIsLoading(false);
     }
-  }, [params.documentId, deleteFile, refreshTree, setError, setIsLoading]);
+  }, [params.documentId, deleteFile, silentRefreshTree, setError]);
 
   const handleRenameItem = useCallback(async (itemPath: string | undefined, currentName: string | undefined, itemType: string | undefined) => {
     if (!itemPath || !currentName || !params.documentId || !itemType) return;
@@ -368,7 +348,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         return;
     }
 
-    setIsLoading(true);
     try {
       const pathSegments = itemPath.split('/');
       pathSegments.pop(); // Remove old name segment
@@ -400,13 +379,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
 
       await promise;
-      await refreshTree();
+      await silentRefreshTree();
     } catch (err) {
       console.error("Failed to rename item:", err);
-    } finally {
-      setIsLoading(false);
     }
-  }, [params.documentId, renameGithubPath, refreshTree, router, params.path, setIsLoading]);
+  }, [params.documentId, renameGithubPath, silentRefreshTree, router, params.path]);
 
   // Simplified scroll function
   const scrollToSection = useCallback((sectionKey: string) => {
@@ -512,6 +489,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       return {
         id: id,
         name: name || "Unnamed Item",
+        path: typedNode.path,  // Pass path for stable expanded state tracking
         icon: icon,
         children: hasChildren
                     ? transformDataToTreeDataItems(children)
