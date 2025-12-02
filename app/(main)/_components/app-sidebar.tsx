@@ -7,6 +7,7 @@ import { useSearch } from "@/hooks/use-search";
 import { useParams, useRouter, usePathname } from "next/navigation";
 import { useAppSidebar, GitHubList } from "@/hooks/use-app-sidebar";
 import { useSettings, useTemplateSchema, getSectionsFromSchema } from "@/hooks/use-settings";
+import { generateFrontmatterFromSchema } from "@/hooks/use-document";
 import { toast } from "sonner";
 import {
   File as FileIcon,
@@ -94,6 +95,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const createMarkdownFile = useAction(api.github.createMarkdownFileInRepo);
   const deleteFile = useAction(api.github.deleteFile);
   const renameGithubPath = useAction(api.github.renamePathInRepo);
+  const fetchFileContent = useAction(api.github.fetchAndReturnGithubFileContent);
 
   const refreshTree = useCallback(async () => {
     if (!params.documentId) {
@@ -206,44 +208,22 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     loadFileTree();
   }, [params.documentId, document, fetchContentTree, setIsLoading, setItems, setError, resetSidebarState]);
 
-  const handleCreateItem = useCallback(async (parentId: string | undefined, type: "file" | "folder") => {
+  // Create a new page - either at root level or as a subpage
+  const handleCreatePage = useCallback(async (parentPath?: string) => {
     if (!params.documentId) return;
-    const itemName = window.prompt(`Enter new ${type} name:`);
-    if (!itemName) return;
-
-    let parentPath = "";
-    if (parentId) {
-      const findParent = (nodes: TreeNode[], id: string): TreeNode | undefined => {
-        for (const node of nodes) {
-          if (node.sha === id || node.path === id) return node;
-          if (node.children) {
-            const found = findParent(node.children, id);
-            if (found) return found;
-          }
-        }
-        return undefined;
-      };
-      const parentNode = findParent(rawTreeData as TreeNode[], parentId);
-      if (parentNode && parentNode.path) {
-        parentPath = parentNode.path;
-      } else if (parentId && type === "folder") {
-        console.warn("Could not determine parent path from parentId:", parentId);
-      }
-    }
+    const pageName = window.prompt("Enter new page name:");
+    if (!pageName) return;
 
     setIsLoading(true);
-    const today = new Date().toISOString().split("T")[0];
 
-    let filePath = "";
-    let content = "";
+    // If no parent, create at root level as a simple .md file
+    // If parent exists, create inside the parent folder
+    const filePath = parentPath
+      ? `${parentPath}/${pageName}.md`
+      : `${pageName}.md`;
 
-    if (type === "folder") {
-      filePath = parentPath ? `${parentPath}/${itemName}/_index.md` : `${itemName}/_index.md`;
-      content = `---\ntitle: \"${itemName}\"\ndate: ${today}\n---\n`;
-    } else {
-      filePath = parentPath ? `${parentPath}/${itemName}.md` : `${itemName}.md`;
-      content = `---\ntitle: \"${itemName}\"\ndate: ${today}\n---\n`;
-    }
+    // Generate frontmatter from the template's pageSettingsJsonSchema
+    const content = generateFrontmatterFromSchema(template?.pageSettingsJsonSchema, pageName);
 
     try {
       const promise = createMarkdownFile({
@@ -253,20 +233,99 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
 
       toast.promise(promise, {
-        loading: `Creating ${type}...`,
-        success: `${type === "folder" ? "Folder" : "Page"} "${itemName}" created successfully!`,
-        error: `Failed to create ${type}. Please try again.`
+        loading: "Creating page...",
+        success: `Page "${pageName}" created successfully!`,
+        error: "Failed to create page. Please try again."
       });
 
       await promise;
       await refreshTree();
     } catch (err) {
-      console.error(`Failed to create ${type}:`, err);
-      setError(`Failed to create ${type}.`);
+      console.error("Failed to create page:", err);
+      setError("Failed to create page.");
     } finally {
       setIsLoading(false);
     }
-  }, [params.documentId, createMarkdownFile, refreshTree, rawTreeData, setError, setIsLoading]);
+  }, [params.documentId, createMarkdownFile, refreshTree, setError, setIsLoading, template]);
+
+  // Add a subpage to an existing page
+  // If the page is a file (.md), we need to convert it to a folder first
+  const handleAddSubpage = useCallback(async (itemPath: string | undefined, itemType: string | undefined, itemName: string | undefined) => {
+    if (!params.documentId || !itemPath) return;
+
+    const subpageName = window.prompt("Enter subpage name:");
+    if (!subpageName) return;
+
+    setIsLoading(true);
+
+    try {
+      if (itemType === "tree") {
+        // It's already a folder, just add a new page inside
+        const filePath = `${itemPath}/${subpageName}.md`;
+        const content = generateFrontmatterFromSchema(template?.pageSettingsJsonSchema, subpageName);
+
+        const promise = createMarkdownFile({
+          id: params.documentId as Id<"documents">,
+          filePath: `content/${filePath}`,
+          content,
+        });
+
+        toast.promise(promise, {
+          loading: "Creating subpage...",
+          success: `Subpage "${subpageName}" created successfully!`,
+          error: "Failed to create subpage. Please try again."
+        });
+
+        await promise;
+      } else {
+        // It's a file - we need to convert it to a folder structure
+        // 1. Get the current file content
+        // 2. Create a new folder with _index.md containing the original content
+        // 3. Create the new subpage
+        // 4. Delete the original file
+
+        // Get the original content
+        const originalContent = await fetchFileContent({
+          id: params.documentId as Id<"documents">,
+          path: `content/${itemPath}`,
+        });
+
+        // Determine the new folder path (remove .md extension)
+        const folderPath = itemPath.replace(/\.md$/, '');
+
+        // Create the _index.md with original content
+        await createMarkdownFile({
+          id: params.documentId as Id<"documents">,
+          filePath: `content/${folderPath}/_index.md`,
+          content: originalContent,
+        });
+
+        // Create the new subpage with proper frontmatter
+        const subpageContent = generateFrontmatterFromSchema(template?.pageSettingsJsonSchema, subpageName);
+        await createMarkdownFile({
+          id: params.documentId as Id<"documents">,
+          filePath: `content/${folderPath}/${subpageName}.md`,
+          content: subpageContent,
+        });
+
+        // Delete the original file
+        await deleteFile({
+          id: params.documentId as Id<"documents">,
+          filePath: `content/${itemPath}`,
+        });
+
+        toast.success(`Converted "${itemName}" to a page with subpage "${subpageName}"!`);
+      }
+
+      await refreshTree();
+    } catch (err) {
+      console.error("Failed to add subpage:", err);
+      toast.error("Failed to add subpage. Please try again.");
+      setError("Failed to add subpage.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [params.documentId, createMarkdownFile, deleteFile, fetchFileContent, refreshTree, setError, setIsLoading, template]);
 
   const handleDeleteItem = useCallback(async (itemPath: string | undefined) => {
     if (!itemPath || !params.documentId) return;
@@ -405,18 +464,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               <Edit className="h-4 w-4 mr-2" />
               Rename
             </DropdownMenuItem>
-            {itemType === "tree" && (
-              <>
-                <DropdownMenuItem onClick={() => handleCreateItem(itemId, "folder")}>
-                  <FolderIcon className="h-4 w-4 mr-2" />
-                  New Folder
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleCreateItem(itemId, "file")}>
-                  <FileIcon className="h-4 w-4 mr-2" />
-                  New File
-                </DropdownMenuItem>
-              </>
-            )}
+            <DropdownMenuItem onClick={() => handleAddSubpage(itemPath, itemType, itemName)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add subpage
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => handleDeleteItem(itemPath)}
@@ -433,21 +484,50 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     return nodes.map((node) => {
       const typedNode = node as TreeNode;
 
+      let children = typedNode.children;
+      const isFolder = typedNode.type === "tree";
+
+      // Check if folder contains _index.md or index.md (Hugo branch/leaf bundles)
+      const indexFile = children?.find(c =>
+        c.name === '_index.md' || c.path?.endsWith('/_index.md') ||
+        c.name === 'index.md' || c.path?.endsWith('/index.md')
+      );
+
+      // If it's a folder with an index file, treat it as a Page that can have children.
+      // We remove the index file from the visible children list.
+      if (isFolder && indexFile) {
+          children = children?.filter(c => c !== indexFile);
+      }
+
       const name = typedNode.name || (typedNode.path ? typedNode.path.split('/').pop() : 'Unnamed');
       const id = typedNode.sha || typedNode.path || String(Math.random());
-      const isFolder = typedNode.type === "tree";
+
+      // In "Notion-like" view, everything looks like a File (Page).
+      // Folders are just Pages that happen to have children.
+      const icon = FileIcon;
+
+      // If children array is empty after filtering, we treat it as having no children (leaf)
+      const hasChildren = children && children.length > 0;
 
       return {
         id: id,
         name: name || "Unnamed Item",
-        icon: isFolder ? FolderIcon : FileIcon,
-        children: isFolder && typedNode.children && typedNode.children.length > 0
-                    ? transformDataToTreeDataItems(typedNode.children)
+        icon: icon,
+        children: hasChildren
+                    ? transformDataToTreeDataItems(children)
                     : undefined,
         actions: getItemActions(typedNode.path, typedNode.type, id, name),
         onClick: () => {
-          if (!isFolder && typedNode.path && params.documentId) {
+          // Navigate on click for everything (Folders/Pages and Files)
+          if (typedNode.path && params.documentId) {
             let navigationPath = typedNode.path;
+
+            // If it's a folder treated as a Page (has _index.md or index.md), navigate to the index file
+            // This ensures the backend fetches the file content, not the directory listing
+            if (isFolder && indexFile && indexFile.path) {
+                navigationPath = indexFile.path;
+            }
+
             if (navigationPath.startsWith('content/')) {
                 navigationPath = navigationPath.substring('content/'.length);
             }
@@ -456,7 +536,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         },
       };
     });
-  }, [router, params.documentId, handleCreateItem, handleDeleteItem, handleRenameItem]);
+  }, [router, params.documentId, handleAddSubpage, handleDeleteItem, handleRenameItem]);
 
   const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
 
@@ -550,26 +630,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               <div className="flex items-center justify-between px-4">
                 <SidebarGroupLabel>Content</SidebarGroupLabel>
                 {params.documentId && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        aria-label="New item"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start">
-                      <DropdownMenuItem onClick={() => handleCreateItem(undefined, "folder")}>
-                        <FolderIcon className="h-4 w-4 mr-2" />
-                        New Folder
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleCreateItem(undefined, "file")}>
-                        <FileIcon className="h-4 w-4 mr-2" />
-                        New File
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <button
+                    className="h-6 w-6 flex items-center justify-center rounded hover:bg-accent dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label="New page"
+                    onClick={() => handleCreatePage()}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
                 )}
               </div>
               <SidebarGroupContent>

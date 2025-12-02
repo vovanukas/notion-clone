@@ -4,6 +4,94 @@ import matter from "gray-matter";
 import { Id } from "@/convex/_generated/dataModel";
 import { findImageKey, getAllKeys } from "@/lib/utils";
 
+// Shared YAML dump options for consistent formatting across the app
+export const YAML_DUMP_OPTIONS: yaml.DumpOptions = {
+  lineWidth: -1,    // Disable line wrapping
+  noRefs: true,     // Disable references
+  quotingType: '"', // Use double quotes for strings
+  forceQuotes: false // Don't force quotes for simple strings
+};
+
+/**
+ * Convert a parsed object to YAML string
+ * Used for frontmatter serialization
+ */
+export const objectToYaml = (data: Record<string, any>): string => {
+  if (Object.keys(data).length === 0) return '';
+  return yaml.dump(data, YAML_DUMP_OPTIONS);
+};
+
+/**
+ * Generate frontmatter content from a JSON Schema
+ * Includes ALL fields from the schema with appropriate defaults
+ * This ensures Hugo templates don't fail on missing fields
+ */
+export const generateFrontmatterFromSchema = (
+  schema: Record<string, any> | undefined,
+  pageName: string
+): string => {
+  if (!schema?.properties) {
+    // Fallback to basic frontmatter if no schema
+    const today = new Date().toISOString().split("T")[0];
+    return `---\ntitle: "${pageName}"\ndate: ${today}\n---\n`;
+  }
+
+  const frontmatter: Record<string, any> = {};
+
+  // Process ALL properties in the schema (not just required ones)
+  // This ensures Hugo templates don't fail on missing fields like `contributors`
+  Object.entries(schema.properties).forEach(([key, propSchema]: [string, any]) => {
+    const hasDefault = propSchema.default !== undefined;
+
+    // Special handling for specific fields
+    if (key === 'title') {
+      frontmatter[key] = pageName;
+    } else if (key === 'date') {
+      frontmatter[key] = new Date().toISOString();
+    } else if (key === 'lastmod') {
+      frontmatter[key] = new Date().toISOString();
+    } else if (hasDefault) {
+      frontmatter[key] = propSchema.default;
+    } else {
+      // Provide type-appropriate empty value
+      switch (propSchema.type) {
+        case 'string':
+          frontmatter[key] = '';
+          break;
+        case 'boolean':
+          frontmatter[key] = false;
+          break;
+        case 'integer':
+        case 'number':
+          frontmatter[key] = propSchema.minimum || 0;
+          break;
+        case 'array':
+          frontmatter[key] = [];
+          break;
+        case 'object':
+          // For nested objects, recursively generate defaults
+          if (propSchema.properties) {
+            const nestedObj: Record<string, any> = {};
+            Object.entries(propSchema.properties).forEach(([nestedKey, nestedSchema]: [string, any]) => {
+              if (nestedSchema.default !== undefined) {
+                nestedObj[nestedKey] = nestedSchema.default;
+              }
+            });
+            if (Object.keys(nestedObj).length > 0) {
+              frontmatter[key] = nestedObj;
+            }
+          }
+          break;
+        default:
+          frontmatter[key] = '';
+      }
+    }
+  });
+
+  const yamlContent = objectToYaml(frontmatter);
+  return `---\n${yamlContent}---\n`;
+};
+
 // Comprehensive markdown preprocessing and normalization
 const preprocessMarkdown = (markdown: string): string => {
   return markdown
@@ -80,12 +168,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
       const { data, content: markdown } = matter(content);
       
       // Convert frontmatter back to YAML for editing
-      const raw = Object.keys(data).length > 0 ? yaml.dump(data, {
-        lineWidth: -1,  // Disable line wrapping
-        noRefs: true,   // Disable references
-        quotingType: '"', // Use double quotes for strings
-        forceQuotes: false // Don't force quotes for simple strings
-      }) : '';
+      const raw = objectToYaml(data);
 
       // Find image key in frontmatter
       const imageKey = findImageKey(data);
@@ -203,12 +286,7 @@ export const useDocument = create<DocumentStore>((set, get) => ({
 
       try {
         // Convert to YAML with proper formatting options
-        const raw = yaml.dump(parsed, {
-          lineWidth: -1,  // Disable line wrapping
-          noRefs: true,   // Disable references
-          quotingType: '"', // Use double quotes for strings
-          forceQuotes: false // Don't force quotes for simple strings
-        });
+        const raw = yaml.dump(parsed, YAML_DUMP_OPTIONS);
         
         // Find image key in new frontmatter
         const imageKey = findImageKey(parsed);

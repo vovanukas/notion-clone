@@ -266,33 +266,48 @@ const TreeNode = ({
             onValueChange={(s) => setValue(s)}
         >
             <AccordionPrimitive.Item value={item.id}>
-                <AccordionTrigger
+                <div
                     className={cn(
+                        "flex items-center relative",
                         treeVariants(),
                         selectedItemId === item.id && selectedTreeVariants(),
                         isDragOver && dragOverVariants()
                     )}
-                    onClick={() => {
-                        handleSelectChange(item)
-                        item.onClick?.()
-                    }}
                     draggable={!!item.draggable}
                     onDragStart={onDragStart}
                     onDragOver={onDragOver}
                     onDragLeave={onDragLeave}
                     onDrop={onDrop}
                 >
-                    <TreeIcon
-                        item={item}
-                        isSelected={selectedItemId === item.id}
-                        isOpen={value.includes(item.id)}
-                        default={defaultNodeIcon}
-                    />
-                    <span className="text-sm truncate">{item.name}</span>
+                    <AccordionPrimitive.Header>
+                        <AccordionPrimitive.Trigger
+                            className="p-1 transition-all [&[data-state=open]>svg]:rotate-90 cursor-pointer focus:outline-none"
+                        >
+                            <ChevronRight className="h-4 w-4 shrink-0 text-accent-foreground/50 mr-1" />
+                        </AccordionPrimitive.Trigger>
+                    </AccordionPrimitive.Header>
+                    
+                    <div 
+                        className="flex flex-1 items-center py-2 cursor-pointer min-w-0"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            handleSelectChange(item)
+                            item.onClick?.()
+                        }}
+                    >
+                        <TreeIcon
+                            item={item}
+                            isSelected={selectedItemId === item.id}
+                            isOpen={value.includes(item.id)}
+                            default={defaultNodeIcon}
+                        />
+                        <span className="text-sm truncate">{item.name}</span>
+                    </div>
+
                     <TreeActions>
                         {item.actions}
                     </TreeActions>
-                </AccordionTrigger>
+                </div>
                 <AccordionContent className="ml-4 pl-1 border-l">
                     <TreeItem
                         data={item.children ? item.children : item}
