@@ -1359,6 +1359,7 @@ export const createMarkdownFileInRepo = action({
     id: v.id("documents"),
     filePath: v.string(), // e.g. content/en/about/_index.md or content/en/about/page.md
     content: v.string(),  // markdown content (frontmatter + body)
+    failIfExists: v.optional(v.boolean()), // If true, throws error if file already exists
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -1388,6 +1389,10 @@ export const createMarkdownFileInRepo = action({
         console.log("File not found, will create new:", decodedPath);
       }
 
+      if (args.failIfExists && sha) {
+        throw new ConvexError(`A page named "${decodedPath.replace(/^content\//, '')}" already exists.`);
+      }
+
       await octokit.repos.createOrUpdateFileContents({
         owner: "hugity",
         repo: args.id,
@@ -1399,7 +1404,11 @@ export const createMarkdownFileInRepo = action({
       return true;
     } catch (error) {
       console.error("Failed to create markdown file:", error);
-      throw new Error("Failed to create markdown file. Please try again.");
+      // Preserve ConvexError as-is
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw new ConvexError("Failed to create page. Please try again.");
     }
   },
 });
@@ -1503,15 +1512,6 @@ export const deleteFile = action({
   },
 });
 
-type GitHubTreeItem = {
-  path?: string;
-  mode?: string;
-  type?: string;
-  sha?: string;
-  size?: number;
-  url?: string;
-};
-
 export const renamePathInRepo = action({
   args: {
     id: v.id("documents"),
@@ -1533,6 +1533,23 @@ export const renamePathInRepo = action({
 
     try {
       if (args.itemType === "file") {
+        // Check if the destination file already exists
+        try {
+          await octokit.repos.getContent({
+            owner,
+            repo,
+            path: args.newPath,
+          });
+          // If successful, it means the file exists
+          const cleanPath = args.newPath.replace(/^content\//, '');
+          throw new ConvexError(`A page named "${cleanPath}" already exists.`);
+        } catch (error) {
+          if (error instanceof ConvexError) {
+            throw error;
+          }
+          // 404 means file doesn't exist, which is what we want
+        }
+
         let oldFileContentBase64: string;
         let oldFileSha: string;
 
@@ -1588,95 +1605,107 @@ export const renamePathInRepo = action({
         }
 
       } else if (args.itemType === "folder") {
-        let oldFolderTreeItems: GitHubTreeItem[];
-        try {
-          const { data: treeData } = await octokit.git.getTree({
-            owner,
-            repo,
-            tree_sha: "main",
-            recursive: "true",
-          });
-          // Filter items that are blobs and within the oldPath. oldPath itself is not included if it's just a prefix.
-          oldFolderTreeItems = treeData.tree.filter(
-            (item: GitHubTreeItem) => item.path && item.path.startsWith(args.oldPath + '/') && item.type === 'blob'
-          );
-          
-          // Handle case where the folder being renamed is empty or contains only an _index.md or similar at its root.
-          // Check if oldPath itself is a file (e.g. _index.md representing the folder section)
-          const oldPathItself = treeData.tree.find(
-            (item: GitHubTreeItem) => item.path === args.oldPath && item.type === 'blob'
-          );
+        console.log(`[renamePathInRepo] Starting optimized folder rename for '${args.oldPath}' to '${args.newPath}'`);
+        
+        // 1. Get the current commit SHA of the main branch
+        const { data: refData } = await octokit.git.getRef({
+          owner,
+          repo,
+          ref: "heads/main",
+        });
+        const currentCommitSha = refData.object.sha;
 
-          if(oldPathItself) {
-            oldFolderTreeItems.push(oldPathItself); // Add it to the list of items to move
-          }
+        // 2. Get the full recursive tree
+        const { data: treeData } = await octokit.git.getTree({
+          owner,
+          repo,
+          tree_sha: currentCommitSha,
+          recursive: "true",
+        });
 
-          if (oldFolderTreeItems.length === 0) {
-            console.log(`[renamePathInRepo] Old folder '${args.oldPath}' is empty or contains no direct files (blobs). If it has subfolders with files, they should be caught by recursive delete.`);
-            // If the folder is truly empty, deleting it might be all that's needed.
-            // The creation of the new folder structure happens implicitly when files are moved into it.
-          }
-          console.log(`[renamePathInRepo] Found ${oldFolderTreeItems.length} files to move for folder '${args.oldPath}'.`);
-        } catch (error) {
-          console.error(`[renamePathInRepo] Error fetching tree for old folder '${args.oldPath}':`, error);
-          throw error;
+        if (treeData.truncated) {
+          throw new Error("Repository is too large for atomic rename operation.");
         }
 
-        for (const item of oldFolderTreeItems) {
-          if (!item.path || !item.sha) continue;
+        // Check for existence collision (folder or file at destination)
+        // If renaming "docs" to "help", check if "help" or "help/*" exists in current tree
+        const collision = treeData.tree.some((item) => {
+            if (!item.path) return false;
+            // Check exact match (file or folder root if tracked)
+            if (item.path === args.newPath) return true;
+            // Check if it's a child of the new path (meaning newPath is an existing folder)
+            if (item.path.startsWith(args.newPath + "/")) return true;
+            return false;
+        });
 
-          const oldFilePath = item.path;
-          // Construct new path by replacing the old folder path prefix with the new one.
-          const newFilePath = oldFilePath.replace(args.oldPath, args.newPath);
+        if (collision) {
+            const cleanPath = args.newPath.replace(/^content\//, '');
+            throw new ConvexError(`A page named "${cleanPath}" already exists.`);
+        }
 
-          try {
-            const { data: blobData } = await octokit.git.getBlob({
-              owner,
-              repo,
-              file_sha: item.sha,
-            });
+        // 3. Construct the new tree
+        // We map over ALL files in the repo.
+        // If a file is inside the old folder, we change its path.
+        // Otherwise, we keep it as is.
+        const newTreeItems = treeData.tree
+          .filter((item) => item.type !== "tree") // We only care about blobs (files), trees are implied by paths
+          .map((item) => {
+            if (!item.path || !item.mode || !item.type || !item.sha) return null;
 
-            if (typeof blobData.content !== 'string') {
-                console.error(`[renamePathInRepo] Blob content for '${oldFilePath}' is not base64 string. Skipping.`);
-                continue;
+            let path = item.path;
+
+            // Check if this item is within the folder we're renaming
+            // We check for directory separator to avoid partial matches (e.g. renaming "test" matching "testing")
+            if (path === args.oldPath || path.startsWith(args.oldPath + "/")) {
+              // Replace the old prefix with the new prefix
+              path = args.newPath + path.substring(args.oldPath.length);
             }
 
-            await octokit.repos.createOrUpdateFileContents({
-              owner,
-              repo,
-              path: newFilePath,
-              message: `Rename: Move ${oldFilePath} to ${newFilePath}`,
-              content: blobData.content, // content is base64
-            });
-            console.log(`[renamePathInRepo] Moved '${oldFilePath}' to '${newFilePath}'`);
-          } catch (error) {
-            console.error(`[renamePathInRepo] Error moving file '${oldFilePath}' to '${newFilePath}':`, error);
-            throw new Error(`Failed to move '${oldFilePath}'. Operation halted. Some files may have been copied.`);
-          }
-        }
-        // After all files are moved, delete the old folder structure.
-        if (oldFolderTreeItems.length > 0) {
-          console.log(`[renamePathInRepo] Deleting old folder structure: '${args.oldPath}'`);
-          try {
-            await ctx.runAction(api.github.deleteFile, {
-                id: args.id,
-                filePath: args.oldPath, // deleteFile action handles recursive deletion
-            });
-            console.log(`[renamePathInRepo] Deleted old folder '${args.oldPath}'.`);
-          } catch (error) {
-              console.error(`[renamePathInRepo] Files moved, but failed to delete old folder '${args.oldPath}':`, error);
-              throw new Error(`Files moved to '${args.newPath}', but failed to delete old folder '${args.oldPath}'.`);
-          }
-        } else {
-            console.log(`[renamePathInRepo] Old folder '${args.oldPath}' was empty or did not require content deletion after moving files.`);
-        }
+            return {
+              path,
+              mode: item.mode as "100644" | "100755" | "040000" | "160000" | "120000",
+              type: item.type as "blob" | "tree" | "commit",
+              sha: item.sha,
+            };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null);
+
+        // 4. Create the new tree
+        const { data: newTree } = await octokit.git.createTree({
+          owner,
+          repo,
+          tree: newTreeItems,
+        });
+
+        // 5. Create a new commit pointing to the new tree
+        const { data: newCommit } = await octokit.git.createCommit({
+          owner,
+          repo,
+          message: `Rename folder ${args.oldPath} to ${args.newPath}`,
+          tree: newTree.sha,
+          parents: [currentCommitSha],
+        });
+
+        // 6. Update the branch reference to the new commit
+        await octokit.git.updateRef({
+          owner,
+          repo,
+          ref: "heads/main",
+          sha: newCommit.sha,
+        });
+
+        console.log(`[renamePathInRepo] Successfully renamed folder via tree rewrite.`);
       }
       console.log(`[renamePathInRepo] Rename operation completed for '${args.oldPath}' to '${args.newPath}'.`);
       return true;
 
     } catch (error) {
       console.error(`[renamePathInRepo] Overall failure for rename '${args.oldPath}' to '${args.newPath}'. Error:`, error);
-      throw new Error(error instanceof Error ? error.message : "Failed to rename item in repository.");
+      // Preserve ConvexError as-is for clean client messages
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw new ConvexError("Failed to rename. Please try again.");
     }
   },
 });

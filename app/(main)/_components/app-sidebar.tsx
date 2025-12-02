@@ -55,6 +55,24 @@ import {
 import { Spinner } from "@/components/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 
+/**
+ * Extract clean error message from Convex errors
+ */
+function cleanErrorMessage(error: unknown, defaultMessage: string = "An error occurred"): string {
+  if (error instanceof Error) {
+    // ConvexError stores the message in .data, regular errors in .message
+    const convexData = (error as any).data;
+    if (typeof convexData === 'string') {
+      return convexData;
+    }
+    // Fallback to message, stripping any technical prefixes
+    let msg = error.message;
+    msg = msg.replace(/^Uncaught Error:\s*/, "");
+    return msg.trim() || defaultMessage;
+  }
+  return defaultMessage;
+}
+
 interface TreeNode {
   name?: string;
   path?: string;
@@ -215,21 +233,22 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         id: params.documentId as Id<"documents">,
         filePath: `content/${filePath}`,
         content,
+        failIfExists: true,
       });
 
       toast.promise(promise, {
         loading: "Creating page...",
         success: `Page "${pageName}" created successfully!`,
-        error: "Failed to create page. Please try again."
+        error: (err) => cleanErrorMessage(err, "Failed to create page")
       });
 
       await promise;
       await silentRefreshTree();
     } catch (err) {
       console.error("Failed to create page:", err);
-      setError("Failed to create page.");
+      // Error is handled by toast
     }
-  }, [params.documentId, createMarkdownFile, silentRefreshTree, setError, template]);
+  }, [params.documentId, createMarkdownFile, silentRefreshTree, template]);
 
   // Add a subpage to an existing page
   // If the page is a file (.md), we need to convert it to a folder first
@@ -249,12 +268,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           id: params.documentId as Id<"documents">,
           filePath: `content/${filePath}`,
           content,
+          failIfExists: true,
         });
 
         toast.promise(promise, {
           loading: "Creating subpage...",
           success: `Subpage "${subpageName}" created successfully!`,
-          error: "Failed to create subpage. Please try again."
+          error: (err) => cleanErrorMessage(err, "Failed to create subpage")
         });
 
         await promise;
@@ -277,10 +297,12 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         const folderPath = itemPath.replace(/\.md$/, '');
 
         // Create the _index.md with original content
+        // If _index.md already exists, this should fail to avoid overwriting (though unexpected)
         await createMarkdownFile({
           id: params.documentId as Id<"documents">,
           filePath: `content/${folderPath}/_index.md`,
           content: originalContent,
+          failIfExists: true,
         });
 
         // Create the new subpage with proper frontmatter
@@ -289,6 +311,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           id: params.documentId as Id<"documents">,
           filePath: `content/${folderPath}/${subpageName}.md`,
           content: subpageContent,
+          failIfExists: true,
         });
 
         // Delete the original file
@@ -305,10 +328,11 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     } catch (err) {
       console.error("Failed to add subpage:", err);
       toast.dismiss();
-      toast.error("Failed to add subpage. Please try again.");
-      setError("Failed to add subpage.");
+      // Show specific error message if available
+      toast.error(cleanErrorMessage(err, "Failed to add subpage. Please try again."));
+      // setError("Failed to add subpage."); // Rely on toast for feedback
     }
-  }, [params.documentId, createMarkdownFile, deleteFile, fetchFileContent, silentRefreshTree, setError, template]);
+  }, [params.documentId, createMarkdownFile, deleteFile, fetchFileContent, silentRefreshTree, template]);
 
   const handleDeleteItem = useCallback(async (itemPath: string | undefined) => {
     if (!itemPath || !params.documentId) return;
@@ -375,7 +399,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           }
           return `Successfully renamed to "${newNameFromPrompt}"!`;
         },
-        error: `Failed to rename. Please try again.`
+        error: (err) => cleanErrorMessage(err, "Failed to rename. Please try again.")
       });
 
       await promise;
