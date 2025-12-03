@@ -264,7 +264,7 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
             <ThemeProvider theme={muiDarkTheme}>
                 <div style={{ maxWidth: '100%', width: '100%', overflow: 'hidden' }}>
                     <Form
-                        schema={template.settingsJsonSchema}
+                        schema={template.settingsJsonSchema || {}}
                         uiSchema={template.settingsUiSchema || {}}
                         formData={enrichedFormData}
                         validator={validator}

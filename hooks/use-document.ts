@@ -92,28 +92,9 @@ export const generateFrontmatterFromSchema = (
   return `---\n${yamlContent}---\n`;
 };
 
-// Comprehensive markdown preprocessing and normalization
-const preprocessMarkdown = (markdown: string): string => {
-  return markdown
-    // Handle all combinations of bullet points and task lists
-    // Using [*-] to match either * or - as list markers
-    // First, normalize all list items to have single line breaks
-    .replace(/(\n[*-] [^\n]+)\n\n([*-] )/g, '$1\n$2')
-    // Then specifically handle task list items
-    .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] )/g, '$1\n$2')
-    // Handle transition from bullet to task list
-    .replace(/(\n[*-] [^\n]+)\n\n([*-] \[[x ]\])/g, '$1\n$2')
-    // Handle transition from task list to bullet
-    .replace(/(\n[*-] \[[x ]\][^\n]+)\n\n([*-] [^[])/g, '$1\n$2')
-    // Normalize all list markers to - for consistency
-    .replace(/\n\* /g, '\n- ')
-    .trim();
-};
-
 // Normalize markdown content to handle editor-specific changes that aren't real edits
 const normalizeMarkdown = (markdown: string): string => {
-  return preprocessMarkdown(markdown)
-    .trim();
+  return markdown.trim();
 };
 
 type DocumentFrontmatter = {
@@ -390,4 +371,4 @@ export const useDocument = create<DocumentStore>((set, get) => ({
 }));
 
 // Export the preprocessing functions for use in other components
-export { preprocessMarkdown, normalizeMarkdown };
+export { normalizeMarkdown };

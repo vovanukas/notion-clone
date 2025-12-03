@@ -27,7 +27,6 @@ import { api } from "@/convex/_generated/api";
 import { useParams } from "next/navigation";
 import { Id } from "@/convex/_generated/dataModel";
 import { useEffect, useCallback, useRef } from "react";
-import { preprocessMarkdown } from "@/hooks/use-document";
 
 interface EditorProps {
     onChange: (value: string) => void;
@@ -58,9 +57,20 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     const params = useParams();
     const documentId = params.documentId as Id<"documents">;
     const uploadImage = useAction(api.github.uploadImage);
-    const isInitialMount = useRef(true);
 
-    const handleUpload = async (file: File) => {
+    const isInitialMount = useRef(true);
+    const isMounted = useRef(false);
+
+    // Track mounted state to prevent async errors
+    useEffect(() => {
+        isMounted.current = true;
+        return () => {
+            isMounted.current = false;
+        };
+    }, []);
+
+    // Memoize upload handler to prevent editor re-initialization
+    const handleUpload = useCallback(async (file: File) => {
         try {
             if (file.size > MAX_FILE_SIZE) {
                 throw new Error(`File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds the 5MB limit.`);
@@ -89,20 +99,22 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
             console.error("Failed to upload image:", error);
             throw new Error(error instanceof Error ? error.message : "Failed to upload image. Please try again.");
         }
-    }
+    }, [documentId, uploadImage]);
 
     const editor: BlockNoteEditor = useCreateBlockNote({
         uploadFile: handleUpload
     });
 
+    // Initialize content
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
                 try {
                     const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+                    if (!isMounted.current) return;
                     editor.replaceBlocks(editor.document, blocks);
                     isInitialMount.current = false;
-                } catch (error) {
+                } catch {
                     // Ignore errors if editor is unmounting
                 }
             }
@@ -110,23 +122,29 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
         }
     }, [editor, initialContent]);
 
+    // Change handler
     const handleEditorChange = useCallback(async () => {
+        if (!isMounted.current) return;
+
         // Safety check: ensure editor is mounted before accessing
         if (!editor || !editor.document) {
             return;
         }
+
         try {
             const markdown = await editor.blocksToMarkdownLossy(editor.document);
-            // Apply preprocessing to maintain consistency
-            const processedMarkdown = preprocessMarkdown(markdown);
-            onChange(processedMarkdown);
-        } catch (error) {
+
+            if (!isMounted.current) return;
+
+            onChange(markdown);
+        } catch {
             // Ignore errors during editor transition (unmount/remount)
         }
     }, [editor, onChange]);
 
     return (
-        <div>
+        <div className="relative z-0">
+            {/* Added z-0 to create stacking context if needed, though BlockNote handles this well */}
             <BlockNoteView
                 editor={editor}
                 theme={resolvedTheme === "dark" ? "dark" : "light"}

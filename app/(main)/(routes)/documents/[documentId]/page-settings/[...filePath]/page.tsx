@@ -201,7 +201,7 @@ const SettingsPage = ({ params }: SettingsPageProps) => {
         {hasSchema ? (
           <ThemeProvider theme={muiDarkTheme}>
             <Form
-              schema={pageSettingsSchema.jsonSchema}
+              schema={pageSettingsSchema.jsonSchema || {}}
               uiSchema={{
                 ...pageSettingsSchema.uiSchema,
                 "ui:submitButtonOptions": { norender: true }

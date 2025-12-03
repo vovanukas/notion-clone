@@ -66,7 +66,7 @@ const findCoverImage = async (metadata: any, documentId: string, theme?: string)
                 if (response.ok) {
                     return path;
                 }
-            } catch (error) {
+            } catch {
                 // Ignore errors checking path
             }
         }
