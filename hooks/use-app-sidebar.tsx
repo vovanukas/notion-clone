@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { HugoFileNode } from "@/types/hugo";
+import { PageNode, transformToPageTree } from "@/lib/tree-utils";
 
 export type GitHubList = {
   path: string;
@@ -10,6 +11,7 @@ export type GitHubList = {
 type AppSidebarStore = {
   items: GitHubList[];
   treeData: HugoFileNode[];
+  pageTree: PageNode[]; // Derived "Notion-like" tree
   isLoading: boolean;
   error: string | null;
 
@@ -19,6 +21,7 @@ type AppSidebarStore = {
 
   setItems: (items: GitHubList[]) => void;
   getNodeByPath: (path: string) => HugoFileNode | undefined;
+  getPageByPath: (path: string) => PageNode | undefined; // New selector
   buildTree: () => void;
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -34,6 +37,7 @@ type AppSidebarStore = {
 export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
   items: [],
   treeData: [],
+  pageTree: [],
   isLoading: false,
   error: null,
   expandedPaths: new Set(),
@@ -61,6 +65,24 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
     };
 
     return findNode(get().treeData, path);
+  },
+
+  getPageByPath: (path) => {
+    const findPage = (nodes: PageNode[], path: string): PageNode | undefined => {
+      for (const node of nodes) {
+        if (node.path === path) {
+          return node;
+        }
+        if (node.children) {
+          const found = findPage(node.children, path);
+          if (found) {
+            return found;
+          }
+        }
+      }
+      return undefined;
+    };
+    return findPage(get().pageTree, path);
   },
 
   buildTree: () => {
@@ -100,7 +122,10 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
       }
     });
 
-    set({ treeData: root });
+    // Build the Notion-like Page Tree from the raw Hugo tree
+    const pageTree = transformToPageTree(root);
+
+    set({ treeData: root, pageTree });
   },
 
   setIsLoading: (isLoading) => set({ isLoading }),
@@ -111,6 +136,7 @@ export const useAppSidebar = create<AppSidebarStore>((set, get) => ({
     set({
       items: [],
       treeData: [],
+      pageTree: [],
       isLoading: false,
       error: null,
       expandedPaths: new Set(),

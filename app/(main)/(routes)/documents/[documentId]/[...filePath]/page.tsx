@@ -96,8 +96,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const loadContent = useCallback(async () => {
         if (!documentId || !filePath) return;
         
-        useDocument.getState().debug();
-        
         // Check if document is already loaded
         const existingDoc = getDocument(decodedPath);
         if (existingDoc) {
@@ -114,7 +112,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
 
             // Load into document store
             loadDocument(documentId, decodedPath, fileContent);
-            useDocument.getState().debug();
         } catch (err) {
             console.error("Failed to load document:", err);
         } finally {
@@ -158,7 +155,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
 
     const onChange = useCallback((markdown: string) => {
         updateMarkdown(decodedPath, markdown);
-        useDocument.getState().debug();
     }, [updateMarkdown, decodedPath]);
 
     const onTitleChange = useCallback((value: string) => {
@@ -169,7 +165,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             title: value
         };
         useDocument.getState().updateFrontmatterParsed(decodedPath, newFrontmatter);
-        useDocument.getState().debug();
     }, [currentDocument, decodedPath]);
 
     if (document === undefined || loading || !currentDocument) {

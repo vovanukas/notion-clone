@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageNode } from "@/lib/tree-utils";
 
 /**
  * Extract clean error message from Convex errors
@@ -74,16 +75,9 @@ function cleanErrorMessage(error: unknown, defaultMessage: string = "An error oc
   return defaultMessage;
 }
 
-interface TreeNode {
-  name?: string;
-  path?: string;
-  type?: string;
-  children?: TreeNode[];
-  sha?: string;
-}
-
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const { treeData: rawTreeData, setItems, isLoading, setIsLoading, error, setError, resetSidebarState } = useAppSidebar();
+  // Use pageTree (Notion-like) instead of rawTreeData
+  const { pageTree, setItems, isLoading, setIsLoading, error, setError, resetSidebarState } = useAppSidebar();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const search = useSearch();
@@ -444,7 +438,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     }
   }, [params.documentId, router, scrollToSection, setCurrentSection]);
 
-  const transformDataToTreeDataItems = useCallback((nodes: TreeNode[] | GitHubList[] | undefined): TreeDataItem[] => {
+  const transformPageTreeToTreeDataItems = useCallback((nodes: PageNode[] | undefined): TreeDataItem[] => {
     if (!nodes) return [];
 
     const getItemActions = (itemPath: string | undefined, itemType: string | undefined, itemId: string, itemName: string | undefined): React.ReactNode => {
@@ -484,67 +478,28 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     };
 
     return nodes.map((node) => {
-      const typedNode = node as TreeNode;
-
-      let children = typedNode.children;
-      const isFolder = typedNode.type === "tree";
-
-      // Check if folder contains _index.md or index.md (Hugo branch/leaf bundles)
-      const indexFile = children?.find(c =>
-        c.name === '_index.md' || c.path?.endsWith('/_index.md') ||
-        c.name === 'index.md' || c.path?.endsWith('/index.md')
-      );
-
-      // If it's a folder with an index file, treat it as a Page that can have children.
-      // We remove the index file from the visible children list.
-      if (isFolder && indexFile) {
-          children = children?.filter(c => c !== indexFile);
-      }
-
-      let name = typedNode.name || (typedNode.path ? typedNode.path.split('/').pop() : 'Unnamed');
-      
-      // Strip .md extension from the name for display
-      if (name && name.endsWith('.md')) {
-        name = name.replace(/\.md$/, '');
-      }
-
-      const id = typedNode.sha || typedNode.path || String(Math.random());
-
-      // In "Notion-like" view, everything looks like a File (Page).
-      // Folders are just Pages that happen to have children.
+      const hasChildren = node.children && node.children.length > 0;
       let icon = FileIcon;
 
-      // Special case for root _index.md -> Home Page
-      if (name === '_index') {
-        name = 'Home Page';
+      if (node.title === 'Home Page') {
         icon = Home;
       }
 
-      // If children array is empty after filtering, we treat it as having no children (leaf)
-      const hasChildren = children && children.length > 0;
-
       return {
-        id: id,
-        name: name || "Unnamed Item",
-        path: typedNode.path,  // Pass path for stable expanded state tracking
+        id: node.id,
+        name: node.title || "Unnamed Item",
+        path: node.path,
         icon: icon,
         children: hasChildren
-                    ? transformDataToTreeDataItems(children)
+                    ? transformPageTreeToTreeDataItems(node.children)
                     : undefined,
-        actions: getItemActions(typedNode.path, typedNode.type, id, name),
+        actions: getItemActions(node.path, node.originalNode.type, node.id, node.title),
         onClick: () => {
-          // Navigate on click for everything (Folders/Pages and Files)
-          if (typedNode.path && params.documentId) {
-            let navigationPath = typedNode.path;
-
-            // If it's a folder treated as a Page (has _index.md or index.md), navigate to the index file
-            // This ensures the backend fetches the file content, not the directory listing
-            if (isFolder && indexFile && indexFile.path) {
-                navigationPath = indexFile.path;
-            }
+          if (params.documentId) {
+            let navigationPath = node.contentPath || node.path;
 
             if (navigationPath.startsWith('content/')) {
-                navigationPath = navigationPath.substring('content/'.length);
+              navigationPath = navigationPath.substring('content/'.length);
             }
             router.push(`/documents/${params.documentId}/${navigationPath}`);
           }
@@ -553,7 +508,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
     });
   }, [router, params.documentId, handleAddSubpage, handleDeleteItem, handleRenameItem]);
 
-  const displayTreeData = React.useMemo(() => transformDataToTreeDataItems(rawTreeData), [rawTreeData, transformDataToTreeDataItems]);
+  const displayTreeData = React.useMemo(() => transformPageTreeToTreeDataItems(pageTree), [pageTree, transformPageTreeToTreeDataItems]);
 
   return (
     <Sidebar
@@ -567,10 +522,8 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         {params.documentId && (
           <>
             <Item label="Search" icon={Search} isSearch onClick={search.onOpen} />
-            {/* Settings with split button design */}
             <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
               <div className="flex">
-                {/* Main Settings Button - Navigate to All Settings */}
                 <div
                   className={`group min-h-[27px] text-sm py-1 pl-3 pr-1 flex-1 hover:bg-primary/5 flex items-center font-medium cursor-pointer ${
                     pathname.includes('/settings') && !currentSection
@@ -583,7 +536,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   <span>Settings</span>
                 </div>
                 
-                {/* Separate Arrow Button - Toggle Submenu */}
                 <CollapsibleTrigger asChild>
                   <div className="min-h-[27px] px-2 hover:bg-primary/5 flex items-center cursor-pointer text-muted-foreground">
                     {!template && document?.theme ? (
@@ -600,7 +552,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 <div className="pl-8 py-1 space-y-1">
                   {availableSections.length > 0 ? (
                     <>
-                      {/* Individual Sections Only */}
                       {availableSections.map((section) => (
                         <div
                           key={section.key}
@@ -632,14 +583,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 }
               }}
             />
-            {/* <Popover>
-              <PopoverTrigger className="w-full">
-                <Item label="Trash" icon={Trash} />
-              </PopoverTrigger>
-              <PopoverContent side="top" className="p-0 w-72">
-                <TrashBox />
-              </PopoverContent>
-            </Popover> */}
             <SidebarSeparator />
             <SidebarGroup>
               <div className="flex items-center justify-between px-4">

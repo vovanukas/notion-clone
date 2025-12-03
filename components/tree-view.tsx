@@ -338,14 +338,14 @@ const TreeNode = ({
                             handleSelectChange(item)
                             item.onClick?.()
                         }}
-                    >
-                        <TreeIcon
-                            item={item}
-                            isSelected={selectedItemId === item.id}
+                >
+                    <TreeIcon
+                        item={item}
+                        isSelected={selectedItemId === item.id}
                             isOpen={isItemExpanded}
-                            default={defaultNodeIcon}
-                        />
-                        <span className="text-sm truncate">{item.name}</span>
+                        default={defaultNodeIcon}
+                    />
+                    <span className="text-sm truncate">{item.name}</span>
                     </div>
 
                     <TreeActions>

@@ -219,12 +219,12 @@ export const createRepo = action({
           }
 
           // Always set repo to ignored - works for both org members and external collaborators
-          try {
-            await userOctokit.activity.setRepoSubscription({
-              owner: "hugity",
-              repo: args.repoName,
+            try {
+              await userOctokit.activity.setRepoSubscription({
+                owner: "hugity",
+                repo: args.repoName,
               ignored: true,
-            });
+              });
             console.log(`User set to ignore notifications for ${args.repoName}`);
           } catch (error) {
             console.error("Failed to set ignore notifications for repository:", error);
@@ -1618,12 +1618,12 @@ export const renamePathInRepo = action({
         const currentCommitSha = refData.object.sha;
 
         // 2. Get the full recursive tree
-        const { data: treeData } = await octokit.git.getTree({
-          owner,
-          repo,
+          const { data: treeData } = await octokit.git.getTree({
+            owner,
+            repo,
           tree_sha: currentCommitSha,
-          recursive: "true",
-        });
+            recursive: "true",
+          });
 
         if (treeData.truncated) {
           throw new Error("Repository is too large for atomic rename operation.");
@@ -1661,7 +1661,7 @@ export const renamePathInRepo = action({
             if (path === args.oldPath || path.startsWith(args.oldPath + "/")) {
               // Replace the old prefix with the new prefix
               path = args.newPath + path.substring(args.oldPath.length);
-            }
+        }
 
             return {
               path,
@@ -1681,8 +1681,8 @@ export const renamePathInRepo = action({
 
         // 5. Create a new commit pointing to the new tree
         const { data: newCommit } = await octokit.git.createCommit({
-          owner,
-          repo,
+              owner,
+              repo,
           message: `Rename folder ${args.oldPath} to ${args.newPath}`,
           tree: newTree.sha,
           parents: [currentCommitSha],
@@ -1690,8 +1690,8 @@ export const renamePathInRepo = action({
 
         // 6. Update the branch reference to the new commit
         await octokit.git.updateRef({
-          owner,
-          repo,
+              owner,
+              repo,
           ref: "heads/main",
           sha: newCommit.sha,
         });
