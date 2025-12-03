@@ -13,6 +13,7 @@ import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useDocument } from "@/hooks/use-document";
 import Image from "next/image";
 import { isImagePath, getNestedValue } from "@/lib/utils";
+import { ChildPagesCards } from "@/components/child-pages-cards";
 
 interface FilePathPageProps {
     params: Promise<{
@@ -66,7 +67,7 @@ const findCoverImage = async (metadata: any, documentId: string, theme?: string)
                     return path;
                 }
             } catch (error) {
-                console.log(`Failed to check path: ${path}`, error);
+                // Ignore errors checking path
             }
         }
     }
@@ -95,13 +96,11 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
     const loadContent = useCallback(async () => {
         if (!documentId || !filePath) return;
         
-        console.log('📄 Loading document:', decodedPath);
         useDocument.getState().debug();
         
         // Check if document is already loaded
         const existingDoc = getDocument(decodedPath);
         if (existingDoc) {
-            console.log('📄 Document already loaded:', decodedPath);
             setLoading(false);
             return;
         }
@@ -115,7 +114,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
 
             // Load into document store
             loadDocument(documentId, decodedPath, fileContent);
-            console.log('📄 Document loaded successfully:', decodedPath);
             useDocument.getState().debug();
         } catch (err) {
             console.error("Failed to load document:", err);
@@ -160,7 +158,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
 
     const onChange = useCallback((markdown: string) => {
         updateMarkdown(decodedPath, markdown);
-        console.log('📝 Document content updated:', decodedPath);
         useDocument.getState().debug();
     }, [updateMarkdown, decodedPath]);
 
@@ -172,7 +169,6 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
             title: value
         };
         useDocument.getState().updateFrontmatterParsed(decodedPath, newFrontmatter);
-        console.log('📑 Document title updated:', decodedPath);
         useDocument.getState().debug();
     }, [currentDocument, decodedPath]);
 
@@ -235,10 +231,12 @@ const FilePathPage = ({ params }: FilePathPageProps) => {
                     filePath={filePathString}
                 />
                 <Editor
+                    key={decodedPath}
                     onChange={onChange}
                     initialContent={currentDocument.markdown}
                     editable={true}
                 />
+                <ChildPagesCards filePath={decodedPath} />
             </div>
         </div>
     );

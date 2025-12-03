@@ -98,19 +98,31 @@ const Editor = ({onChange, initialContent, editable = true}: EditorProps) => {
     useEffect(() => {
         if (isInitialMount.current && initialContent) {
             async function parseAndSetContent() {
-                const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
-                editor.replaceBlocks(editor.document, blocks);
-                isInitialMount.current = false;
+                try {
+                    const blocks = await editor.tryParseMarkdownToBlocks(initialContent);
+                    editor.replaceBlocks(editor.document, blocks);
+                    isInitialMount.current = false;
+                } catch (error) {
+                    // Ignore errors if editor is unmounting
+                }
             }
             parseAndSetContent();
         }
     }, [editor, initialContent]);
 
     const handleEditorChange = useCallback(async () => {
-        const markdown = await editor.blocksToMarkdownLossy(editor.document);
-        // Apply preprocessing to maintain consistency
-        const processedMarkdown = preprocessMarkdown(markdown);
-        onChange(processedMarkdown);
+        // Safety check: ensure editor is mounted before accessing
+        if (!editor || !editor.document) {
+            return;
+        }
+        try {
+            const markdown = await editor.blocksToMarkdownLossy(editor.document);
+            // Apply preprocessing to maintain consistency
+            const processedMarkdown = preprocessMarkdown(markdown);
+            onChange(processedMarkdown);
+        } catch (error) {
+            // Ignore errors during editor transition (unmount/remount)
+        }
     }, [editor, onChange]);
 
     return (
