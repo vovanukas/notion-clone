@@ -83,6 +83,17 @@ export const Publish = ({initialData}: PublishProps) => {
                                 {buildStatus === "BUILDING" ? "Publishing your website..." : "Updating your website..."}
                             </p>
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                            ⚡ Want faster publishing?{" "}
+                            <a
+                                href="https://hugity.com/pricing/"
+                                className="underline font-medium"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                Go Premium
+                            </a>
+                        </p>
                         <div className="flex items-center">
                             <input
                                 className="flex-1 px-2 text-xs border rounded-l-md h-8 bg-muted truncate"
