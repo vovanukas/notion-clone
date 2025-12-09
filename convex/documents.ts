@@ -311,6 +311,7 @@ export const update = mutation({
         publishStatus: v.optional(v.union(v.literal("PUBLISHING"), v.literal("PUBLISHED"), v.literal("UNPUBLISHED"), v.literal("ERROR"))),
         websiteUrl: v.optional(v.string()),
         theme: v.optional(v.string()),
+        repoSshUrl: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();

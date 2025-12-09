@@ -11,8 +11,9 @@ export const callbackPageDeployed = httpAction(async (ctx, request) => {
     }
     const token = authHeader.split(' ')[1];
 
-    let pagesUrl;
-    if (data.buildStatus === "BUILT") {
+    // Prefer pageUrl from webhook payload; fallback to API lookup only if not provided
+    let pagesUrl = data.pageUrl;
+    if (!pagesUrl && data.buildStatus === "BUILT") {
         pagesUrl = await ctx.runAction(api.github.getPagesUrl, {
           id: id,
           callbackUserId: token
