@@ -124,6 +124,30 @@ export async function readRepoFile(
   }
 }
 
+export async function readRepoFiles(
+  repoUrl: string,
+  filePaths: string[]
+): Promise<Record<string, Buffer>> {
+  const workdir = tmpWorkdir(repoUrl);
+  const out: Record<string, Buffer> = {};
+  try {
+    await setupGitRepo(repoUrl, workdir);
+    for (const filePath of filePaths) {
+      const absPath = path.join(workdir, filePath);
+      try {
+        const data = await readFile(absPath);
+        out[filePath] = data;
+      } catch (err: any) {
+        if (err?.code === "ENOENT") continue;
+        throw err;
+      }
+    }
+    return out;
+  } finally {
+    await cleanupWorkdir(workdir);
+  }
+}
+
 export async function writeRepoFiles(
   repoUrl: string,
   files: Array<{ path: string; content: string | Buffer }>,

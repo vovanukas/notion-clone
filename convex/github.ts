@@ -478,10 +478,14 @@ export const fetchAndReturnGithubFileContent = action({
       console.log(
         `[fetchAndReturnGithubFileContent] Using git path for repo ${document.repoSshUrl}, file ${args.path}`
       );
-      return ctx.runAction(api.githubGit.gitFetchFileContent, {
+      const content = await ctx.runAction(api.githubGit.gitFetchFileContent, {
         id: args.id,
         path: args.path,
       });
+      if (content === null) {
+        throw new ConvexError("File not found");
+      }
+      return content;
     }
 
     throw new ConvexError("Repository URL not configured for git fetch");
@@ -499,8 +503,8 @@ export const fetchAllConfigFiles = action({
     if (!document?.repoSshUrl) {
       throw new ConvexError("Repository URL not configured");
     }
-    // Simplify: read common root config files via git; ignore config directory for now
-    const candidates = [
+    // Collect possible config files: root configs + any under config/ (including _default)
+    const candidates = new Set<string>([
       "config.toml",
       "config.yaml",
       "config.yml",
@@ -509,23 +513,39 @@ export const fetchAllConfigFiles = action({
       "hugo.yaml",
       "hugo.yml",
       "hugo.json",
-    ];
-    const results: Array<{content:string;path:string;name:string;isDirectory:boolean}> = [];
-    for (const p of candidates) {
-      try {
-        const content = await ctx.runAction(api.githubGit.gitFetchFileContent, {
-          id: args.id,
-          path: p,
-        });
-        results.push({ content, path: p, name: p, isDirectory: false });
-      } catch {
-        // ignore missing
+    ]);
+
+    // Include any files discovered under config/ and config/_default
+    try {
+      const configTree = await ctx.runAction(api.githubGit.gitListConfigFiles, {
+        id: args.id,
+      });
+      for (const entry of configTree) {
+        if (
+          entry.type === "blob" &&
+          (entry.path.endsWith(".toml") ||
+            entry.path.endsWith(".yaml") ||
+            entry.path.endsWith(".yml") ||
+            entry.path.endsWith(".json"))
+        ) {
+          candidates.add(`config/${entry.path}`);
+        }
       }
+    } catch (err) {
+      console.warn("Failed to list config directory, continuing with root candidates", err);
     }
-    if (!results.length) {
-      throw new Error("No configuration files found (root configs missing)");
-    }
-    return results;
+
+    const batch = await ctx.runAction(api.githubGit.gitFetchManyFiles, {
+      id: args.id,
+      paths: Array.from(candidates),
+    });
+
+    return batch.map((file) => ({
+      content: file.content,
+      path: file.path,
+      name: file.path,
+      isDirectory: false,
+    })); // may be empty if no configs present
   },
   });
 
@@ -548,11 +568,13 @@ export const fetchConfigFile = action({
           id: args.id,
           path: configFile,
         });
-        return {
-          content,
-          path: configFile,
-          name: configFile,
-        };
+        if (content !== null) {
+          return {
+            content,
+            path: configFile,
+            name: configFile,
+          };
+        }
       } catch {
         continue;
       }
@@ -590,7 +612,10 @@ export const parseAndSaveSettingsObject = action({
       id: args.id,
       filesToUpdate: [
         {
-          path: args.configPath,
+          // Normalize to keep configs under config/, never content/config
+          path: args.configPath
+            .replace(/^content\/config\//, "config/")
+            .replace(/^content\/_default\//, "config/_default/"),
           content: args.newSettings,
         },
       ],
@@ -631,7 +656,10 @@ export const parseAndSaveMultipleConfigFiles = action({
       await ctx.runAction(api.githubGit.gitUpdateFileContent, {
         id: args.id,
         filesToUpdate: args.configFiles.map(file => ({
-          path: file.path,
+          // Normalize to keep configs under config/, never content/config
+          path: file.path
+            .replace(/^content\/config\//, "config/")
+            .replace(/^content\/_default\//, "config/_default/"),
           content: file.content,
         })),
       });
