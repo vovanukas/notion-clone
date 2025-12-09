@@ -474,12 +474,18 @@ export const saveConfigStringsToGitHub = async (
 ): Promise<void> => {
   try {
     // Convert config strings to the format expected by the Convex action
-    const configFiles = Object.entries(configStrings).map(([filePath, content]) => ({
-      content,
-      path: filePath,
-      name: filePath.split('/').pop() || filePath,
-      isDirectory: false
-    }));
+    const configFiles = Object.entries(configStrings).map(([filePath, content]) => {
+      // Normalize paths so configs always live under config/, not content/config/
+      const normalizedPath = filePath
+        .replace(/^content\/config\//, "config/")
+        .replace(/^content\/_default\//, "config/_default/");
+      return {
+        content,
+        path: normalizedPath,
+        name: normalizedPath.split('/').pop() || normalizedPath,
+        isDirectory: false
+      };
+    });
     
     // Debug: Log what we're sending to GitHub
     console.group('🔍 Saving config files to GitHub');

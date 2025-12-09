@@ -8,6 +8,7 @@ import path from "node:path";
 import {
   listContentTree,
   readRepoFile,
+  readRepoFiles,
   writeRepoFiles,
   deleteRepoPaths,
   renameRepoPathsAtomic,
@@ -48,13 +49,26 @@ export const gitUpdateFileContent = action({
 
     const changedFileNames: string[] = [];
     const files = args.filesToUpdate.map((file: any) => {
-      const fileName = file.path
+      const rawPath = decodeURIComponent(file.path);
+      const normalizedPath = (() => {
+        if (
+          rawPath.startsWith("content/") ||
+          rawPath.startsWith("config/") ||
+          rawPath.startsWith("static/") ||
+          rawPath.startsWith("assets/")
+        ) {
+          return rawPath;
+        }
+        return path.join("content", rawPath);
+      })();
+
+      const fileName = normalizedPath
         .replace(/\.md$/, "")
         .replace(/\//g, ", ")
         .replace(/_/g, " ");
       changedFileNames.push(fileName);
       return {
-        path: path.join("content", file.path),
+        path: normalizedPath,
         content: file.content,
       };
     });
@@ -101,7 +115,7 @@ export const gitFetchFileContent = action({
     id: v.id("documents"),
     path: v.string(),
   },
-  handler: async (ctx, args): Promise<string> => {
+  handler: async (ctx, args): Promise<string | null> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new ConvexError("Unauthenticated");
@@ -122,9 +136,62 @@ export const gitFetchFileContent = action({
     try {
       return await readRepoFile(document.repoSshUrl, args.path);
     } catch (error: any) {
+      if (error?.code === "ENOENT") {
+        return null; // missing is expected for many candidates
+      }
       console.error("Failed to fetch file via git:", error);
       throw new ConvexError("Error retrieving file");
     }
+  },
+});
+
+export const gitFetchManyFiles = action({
+  args: {
+    id: v.id("documents"),
+    paths: v.array(v.string()),
+  },
+  handler: async (ctx, args): Promise<Array<{ path: string; content: string }>> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+
+    if (!document) {
+      throw new ConvexError("Document not found");
+    }
+
+    if (!document.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
+
+    const blobs = await readRepoFiles(document.repoSshUrl, args.paths);
+    return Object.entries(blobs).map(([path, buf]) => ({
+      path,
+      content: buf.toString("utf8"),
+    }));
+  },
+});
+
+export const gitListConfigFiles = action({
+  args: {
+    id: v.id("documents"),
+  },
+  handler: async (ctx, args): Promise<Array<{ path: string; type: "blob" | "tree"; size?: number }>> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Unauthenticated");
+    }
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
+    // List all files under config/ (including _default) to support multi-file Hugo configs
+    return listContentTree(document.repoSshUrl, "config");
   },
 });
 
