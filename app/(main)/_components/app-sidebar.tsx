@@ -124,7 +124,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         return;
       }
 
-      const processedResult = result.map(item => ({
+      const processedResult = result.map((item: GitHubList) => ({
         ...item,
         path: typeof item.path === 'string' ? item.path : '',
         type: typeof item.type === 'string' ? item.type : 'blob',
@@ -188,7 +188,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
           return;
         }
 
-        const processedResult = result.map(item => ({
+        const processedResult = result.map((item: GitHubList) => ({
           ...item,
           path: typeof item.path === 'string' ? item.path : '',
           type: typeof item.type === 'string' ? item.type : 'blob',

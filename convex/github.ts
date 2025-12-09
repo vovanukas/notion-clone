@@ -8,8 +8,23 @@ import sodium from 'libsodium-wrappers';
 import { api } from "./_generated/api";
 import { createClerkClient } from "@clerk/backend";
 import { Id } from "./_generated/dataModel";
+import { cleanupWorkdir, gitCommitAndPush, setupGitRepo } from "./git";
 
 const clerkClient = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! })
+
+function attachRateLimitLogging(octokit: Octokit) {
+  octokit.hook.after("request", (response, options) => {
+    const headers = response.headers || {};
+    const remaining = headers["x-ratelimit-remaining"];
+    const limit = headers["x-ratelimit-limit"];
+    const used = (headers as any)["x-ratelimit-used"];
+    const reset = headers["x-ratelimit-reset"];
+    const url = (options as any).url;
+    console.log(
+      `[octokit] ${options.method} ${url} -> ${response.status} rate ${remaining}/${limit} used ${used ?? "?"} reset ${reset ?? "?"}`
+    );
+  });
+}
 
 export const completeOnboarding = action({
   args: {},
@@ -35,42 +50,7 @@ export const completeOnboarding = action({
   },
 });
 
-async function getOctokitFromUserId(userId: string) {
-  try {
-    const user = await clerkClient.users.getUser(userId);
-    const tokenResponse = await clerkClient.users.getUserOauthAccessToken(user.id, "github");
-
-    if (!tokenResponse.data?.[0]?.token) {
-      throw new ConvexError("GitHub account not connected. Please connect your GitHub account in settings.");
-    }
-
-    const octokit = new Octokit({
-      auth: tokenResponse.data[0].token
-    });
-
-    // Verify the token works
-    try {
-      await octokit.rest.users.getAuthenticated();
-      return octokit;
-    } catch {
-      throw new ConvexError("GitHub token validation failed. Token may be expired or invalid.");
-    }
-  } catch (error) {
-    if (error instanceof ConvexError) {
-      throw error;
-    }
-    throw new ConvexError("Failed to authenticate with GitHub: " + (error instanceof Error ? error.message : "Unknown error"));
-  }
-}
-
-async function getUserOctokit(ctx: ActionCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) {
-    throw new ConvexError("Unauthenticated");
-  }
-
-  return getOctokitFromUserId(identity.subject);
-}
+// getUserOctokit removed; all operations use git or app Octokit
 
 async function getAppOctokit(ctx: ActionCtx, documentId: Id<"documents">) {
   // Check user authentication
@@ -98,7 +78,7 @@ async function getAppOctokit(ctx: ActionCtx, documentId: Id<"documents">) {
   try {
     const privateKey = Buffer.from(base64Key, 'base64').toString('utf8');
 
-    return new Octokit({
+    const octokit = new Octokit({
       authStrategy: createAppAuth,
       auth: {
         appId: process.env.GITHUB_APP_ID!,
@@ -106,6 +86,8 @@ async function getAppOctokit(ctx: ActionCtx, documentId: Id<"documents">) {
         installationId: process.env.GITHUB_INSTALLATION_ID!,
       }
     });
+    attachRateLimitLogging(octokit);
+    return octokit;
   } catch (error) {
     console.error("GitHub App authentication error:", error);
     throw new ConvexError("Failed to initialize GitHub client");
@@ -134,9 +116,6 @@ export const createRepo = action({
       buildStatus: "BUILDING",
       title: args.siteName,
     })
-
-    // Start fetching user early
-    const userPromise = clerkClient.users.getUser(identity.subject);
 
     const octokit = await getAppOctokit(ctx, args.repoName);
     try {
@@ -190,47 +169,6 @@ export const createRepo = action({
           ]);
         })(),
 
-        // TASK B: Collaboration & Invite
-        (async () => {
-          const user = await userPromise;
-          const userOctokit = await getUserOctokit(ctx);
-
-          // Add collaborator (for non-org members, this creates an invitation)
-          await octokit.repos.addCollaborator({
-            owner: "hugity",
-            repo: args.repoName,
-            username: user.username!,
-            permission: "maintain",
-          });
-
-          // Accept invitation if one was created (non-org members)
-          const invitations = await userOctokit.repos.listInvitationsForAuthenticatedUser();
-          const targetInvitation = invitations.data.find(inv =>
-            inv.repository.name === args.repoName
-          );
-
-          if (targetInvitation) {
-            await userOctokit.repos.acceptInvitationForAuthenticatedUser({
-              invitation_id: targetInvitation.id
-            });
-            console.log(`Auto-accepted collaboration invitation for ${args.repoName}`);
-          } else {
-            console.log(`No invitation needed for ${args.repoName} (user is likely an org member)`);
-          }
-
-          // Always set repo to ignored - works for both org members and external collaborators
-            try {
-              await userOctokit.activity.setRepoSubscription({
-                owner: "hugity",
-                repo: args.repoName,
-              ignored: true,
-              });
-            console.log(`User set to ignore notifications for ${args.repoName}`);
-          } catch (error) {
-            console.error("Failed to set ignore notifications for repository:", error);
-          }
-        })(),
-
         // TASK C: GitHub Pages Setup
         (async () => {
           await octokit.repos.createPagesSite({
@@ -244,8 +182,15 @@ export const createRepo = action({
             repo: args.repoName,
             https_enforced: true,
           });
-        })()
+        })(),
+
       ]);
+
+      // Store repo URL for git operations (HTTPS)
+      await ctx.runMutation(api.documents.update, {
+        id: args.repoName,
+        repoSshUrl: `https://github.com/hugity/${args.repoName}.git`,
+      } as any);
 
       // 3. Post-creation cleanup and trigger
 
@@ -305,7 +250,7 @@ export const publishPage = action({
       throw new Error ("Unauthenticated");
     }
 
-    const octokit = await getUserOctokit(ctx);
+    const octokit = await getAppOctokit(ctx, args.id);
 
     ctx.runMutation(api.documents.update, {
       id: args.id,
@@ -325,7 +270,35 @@ export const publishPage = action({
       }))
 
     try {
-      // Check if GitHub Pages is enabled, create if not
+      // Try git push to trigger workflow via push event
+      const document = await ctx.runQuery(api.documents.getById, {
+        documentId: args.id,
+      });
+
+      let gitPushSucceeded = false;
+      if (document?.repoSshUrl) {
+        const workdir = `/tmp/repo-${args.id}-${Date.now()}`;
+        try {
+          await setupGitRepo(document.repoSshUrl, workdir);
+          const triggerPath = ".hugity-publish-trigger";
+          const content = `publish-trigger ${new Date().toISOString()}`;
+          await import("node:fs/promises").then(fs =>
+            fs.writeFile(`${workdir}/${triggerPath}`, content, "utf8")
+          );
+          await gitCommitAndPush(workdir, "Trigger publish");
+          gitPushSucceeded = true;
+        } catch (gitError) {
+          console.warn("Git push publish trigger failed, will fall back to workflow dispatch:", gitError);
+        } finally {
+          await cleanupWorkdir(workdir);
+        }
+      }
+
+      if (gitPushSucceeded) {
+        return;
+      }
+
+      // If git push failed or no repo URL, ensure Pages is enabled via app octokit
       try {
         await octokit.repos.getPages({
           owner: "hugity",
@@ -358,192 +331,9 @@ export const publishPage = action({
           throw error;
         }
       }
-
-      // First try to find any existing deployment workflow files
-      const workflowFiles = await octokit.repos.getContent({
-        owner: "hugity",
-        repo: args.id,
-        path: ".github/workflows"
-      });
-
-      let hasDeployWorkflow = false;
-      if (!Array.isArray(workflowFiles.data)) {
-        throw new Error("Expected directory content");
-      }
-
-      // Check for any workflow file that might handle deployments
-      for (const file of workflowFiles.data) {
-        if (file.type === "file" && 
-            file.name.includes("deploy")) {
-          hasDeployWorkflow = true;
-          // Try to dispatch this workflow
-          try {
-            await octokit.actions.createWorkflowDispatch({
-              owner: "hugity",
-              repo: args.id,
-              workflow_id: file.name,
-              ref: "main",
-              inputs: {
-                callbackUrl: process.env.CONVEX_SITE_URL! + "/callbackPageDeployed",
-              },
-            });
-            return; // Successfully dispatched existing workflow
-          } catch (dispatchError) {
-            console.warn(`Failed to dispatch workflow ${file.name}:`, dispatchError);
-            // Continue checking other files if dispatch fails
-          }
-        }
-      }
-
-      // If no suitable workflow found, create our default one
-      if (!hasDeployWorkflow) {
-        const deployWorkflowContent = `
-name: GitHub Pages
-
-on:
-  push:
-    branches:
-      - main  # Set a branch name to trigger deployment
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    environment:
-      name: github-pages
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    concurrency:
-      group: \${{ github.workflow }}-\${{ github.ref }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive  # Fetch Hugo themes (true OR recursive)
-          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
-
-      - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: '0.128.0'
-          extended: true
-
-      - name: Build
-        run: hugo --minify
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./public
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Notify on success
-        if: success()
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-          webhook_auth_type: "bearer"
-          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
-
-      - name: Notify on failure
-        if: failure()
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-          webhook_auth_type: "bearer"
-          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
-    
-        await octokit.repos.createOrUpdateFileContents({
-          owner: "hugity",
-          repo: args.id,
-          path: ".github/workflows/deploy.yml",
-          message: "Add Hugo setup workflow",
-          content: Buffer.from(deployWorkflowContent).toString("base64"),
-        });
-      }
     } catch (error) {
-      if (!(error instanceof Error && error instanceof Object && 'status' in error)) {
-        console.error(error)
-        return
-      }
-
-      if (error.status === 404) {
-        // Handle case where .github/workflows directory doesn't exist
-        const deployWorkflowContent = `
-name: GitHub Pages
-
-on:
-  push:
-    branches:
-      - main  # Set a branch name to trigger deployment
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    environment:
-      name: github-pages
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    concurrency:
-      group: \${{ github.workflow }}-\${{ github.ref }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive  # Fetch Hugo themes (true OR recursive)
-          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
-
-      - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: '0.128.0'
-          extended: true
-
-      - name: Build
-        run: hugo --minify
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./public
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Notify on success
-        if: success()
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-          webhook_auth_type: "bearer"
-          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "BUILT", "publishStatus": "PUBLISHED" }'
-
-      - name: Notify on failure
-        if: failure()
-        uses: distributhor/workflow-webhook@v3
-        with:
-          webhook_url: \${{ secrets.CONVEX_SITE_URL }}/callbackPageDeployed
-          webhook_auth_type: "bearer"
-          webhook_auth: \${{ secrets.CALLBACK_BEARER }}
-          data: '{ "buildStatus": "BUILT", "publishStatus": "ERROR" }'`;
-        await octokit.repos.createOrUpdateFileContents({
-          owner: "hugity",
-          repo: args.id,
-          path: ".github/workflows/deploy.yml",
-          message: "Add Hugo setup workflow",
-          content: Buffer.from(deployWorkflowContent).toString("base64"),
-        });
-      }
+      console.error("Error during publish fallback:", error);
+      throw error;
     }
   },
 });
@@ -553,7 +343,7 @@ export const unpublishPage = action({
     id: v.id("documents"),
    },
   handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
+    const octokit = await getAppOctokit(ctx, args.id);
 
     try {
       // Update document status to unpublishing
@@ -590,24 +380,7 @@ export const unpublishPage = action({
   },
 });
 
-export const dispatchDeployWorkflow = action({
-  args: {
-    id: v.id("documents"),
-  },
-  handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    await octokit.actions.createWorkflowDispatch({
-      owner: "hugity",
-      repo: args.id,
-      workflow_id: "deploy.yml",
-      ref: "main",
-      inputs: {
-        callbackUrl: process.env.CONVEX_SITE_URL! + "/callbackPageDeployed",
-      },
-    });
-  },
-});
+// dispatchDeployWorkflow removed; pushes to main trigger deploy
 
 export const getPagesUrl = action({
   args: {
@@ -615,15 +388,7 @@ export const getPagesUrl = action({
     callbackUserId: v.optional(v.string())
   },
   handler: async (ctx, args) => {
-    let octokit;
-    
-    if (args.callbackUserId) {
-      // If we have a callback user ID (from webhook), use that
-      octokit = await getOctokitFromUserId(args.callbackUserId);
-    } else {
-      // Otherwise use the normal user context
-      octokit = await getUserOctokit(ctx);
-    }
+    const octokit = await getAppOctokit(ctx, args.id);
 
     try {
       // Add retries for getting Pages information
@@ -704,26 +469,22 @@ export const fetchAndReturnGithubFileContent = action({
     id: v.id("documents"),
     path: v.string(),
   },
-  handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
+  handler: async (ctx, args): Promise<string> => {
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
 
-    try {
-      const response = await octokit.repos.getContent({
-        owner: 'hugity',
-        repo: args.id,
+    if (document?.repoSshUrl) {
+      console.log(
+        `[fetchAndReturnGithubFileContent] Using git path for repo ${document.repoSshUrl}, file ${args.path}`
+      );
+      return ctx.runAction(api.githubGit.gitFetchFileContent, {
+        id: args.id,
         path: args.path,
       });
-      if ('content' in response.data && typeof response.data.content === 'string') {
-        const base64DecodedContent = Buffer.from(response.data.content, 'base64').toString('utf8');
-
-        return base64DecodedContent;
-      } else {
-        throw new Error("Invalid file content or format");
-      }
-    } catch (error) {
-      console.error(`Failed to fetch ${args.path}:`, error);
-      throw new Error(`Error retrieving ${args.path} file`);
     }
+
+    throw new ConvexError("Repository URL not configured for git fetch");
   },
 });
 
@@ -731,71 +492,40 @@ export const fetchAllConfigFiles = action({
   args: {
     id: v.id("documents"),
   },
-  handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    const configFiles: Array<{
-      content: string;
-      path: string;
-      name: string;
-      isDirectory: boolean;
-    }> = [];
-
-    // First, try to find single config files in the root directory
-    const rootConfigFiles = [
-      "config.toml", "config.yaml", "config.yml", "config.json", 
-      "hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"
+  handler: async (ctx, args): Promise<Array<{content:string;path:string;name:string;isDirectory:boolean}>> => {
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
+    // Simplify: read common root config files via git; ignore config directory for now
+    const candidates = [
+      "config.toml",
+      "config.yaml",
+      "config.yml",
+      "config.json",
+      "hugo.toml",
+      "hugo.yaml",
+      "hugo.yml",
+      "hugo.json",
     ];
-
-    for (const configFile of rootConfigFiles) {
+    const results: Array<{content:string;path:string;name:string;isDirectory:boolean}> = [];
+    for (const p of candidates) {
       try {
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
-          path: configFile,
+        const content = await ctx.runAction(api.githubGit.gitFetchFileContent, {
+          id: args.id,
+          path: p,
         });
-        if ("content" in response.data && typeof response.data.content === "string") {
-          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
-          configFiles.push({
-            content: base64DecodedContent,
-            path: configFile,
-            name: configFile,
-            isDirectory: false,
-          });
-        }
-      } catch (error: any) {
-        if (error.status !== 404) {
-          console.error(`Failed to fetch ${configFile}:`, error);
-        }
-        // Continue to next file if 404 or other error
+        results.push({ content, path: p, name: p, isDirectory: false });
+      } catch {
+        // ignore missing
       }
     }
-
-    // Then, try to find config directory structure
-    try {
-      const configDirResponse = await octokit.repos.getContent({
-        owner: "hugity",
-        repo: args.id,
-        path: "config",
-      });
-
-      if (Array.isArray(configDirResponse.data)) {
-        // It's a directory, fetch all files recursively
-        const configDirFiles = await fetchConfigDirectoryFiles(octokit, args.id, "config", configDirResponse.data);
-        configFiles.push(...configDirFiles);
-      }
-    } catch (error: any) {
-      if (error.status !== 404) {
-        console.error("Failed to fetch config directory:", error);
-      }
-      // Config directory doesn't exist, which is fine
+    if (!results.length) {
+      throw new Error("No configuration files found (root configs missing)");
     }
-
-    if (configFiles.length === 0) {
-      throw new Error("No configuration files found (tried root config files and config directory)");
-    }
-
-    return configFiles;
+    return results;
   },
   });
 
@@ -803,33 +533,28 @@ export const fetchConfigFile = action({
   args: {
     id: v.id("documents"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{content:string;path:string;name:string}> => {
     const configFiles = ["config.toml", "config.yaml", "config.yml", "config.json", "hugo.toml", "hugo.yaml", "hugo.yml", "hugo.json"];
-    const octokit = await getUserOctokit(ctx);
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
 
     for (const configFile of configFiles) {
       try {
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
+        const content = await ctx.runAction(api.githubGit.gitFetchFileContent, {
+          id: args.id,
           path: configFile,
         });
-        if ("content" in response.data && typeof response.data.content === "string") {
-          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
-          return {
-            content: base64DecodedContent,
-            path: configFile,
-            name: configFile, // Or extract just the name if needed
-          };
-        }
-      } catch (error: any) {
-        if (error.status === 404) {
-          // File not found, try next one
-          continue;
-        }
-        // Other error
-        console.error(`Failed to fetch ${configFile}:`, error);
-        throw new Error(`Error retrieving configuration file ${configFile}`);
+        return {
+          content,
+          path: configFile,
+          name: configFile,
+        };
+      } catch {
+        continue;
       }
     }
     throw new Error("No configuration file found (tried .toml, .yaml, .yml, .json)");
@@ -848,7 +573,12 @@ export const parseAndSaveSettingsObject = action({
       throw new ConvexError("Unauthenticated");
     }
 
-    const octokit = await getUserOctokit(ctx);
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
 
     // Set site status to PUBLISHING since CI/CD will automatically publish changes
     await ctx.runMutation(api.documents.update, {
@@ -856,101 +586,17 @@ export const parseAndSaveSettingsObject = action({
       publishStatus: "PUBLISHING",
     });
 
-    const contentResponse = await octokit.repos.getContent({
-      owner: "hugity",
-      repo: args.id,
-      path: args.configPath, // Use dynamic configPath
+    await ctx.runAction(api.githubGit.gitUpdateFileContent, {
+      id: args.id,
+      filesToUpdate: [
+        {
+          path: args.configPath,
+          content: args.newSettings,
+        },
+      ],
     });
-
-    if (!Array.isArray(contentResponse.data) && contentResponse.data.type === 'file') {
-      const { sha } = contentResponse.data;
-
-      const updatedConfig = args.newSettings;
-
-      await octokit.repos.createOrUpdateFileContents({
-        owner: "hugity",
-        repo: args.id,
-        path: args.configPath, // Use dynamic configPath
-        message: `Changed config settings in ${args.configPath}`,
-        content: Buffer.from(updatedConfig).toString("base64"),
-        sha,
-      });
-
-      // Try to dispatch deployment workflow to ensure publishing
-      try {
-        await ctx.runAction(api.github.dispatchDeployWorkflow, {
-          id: args.id
-        });
-      } catch (dispatchError) {
-        console.warn("Failed to dispatch deployment workflow:", dispatchError);
-        // Don't fail the entire operation if workflow dispatch fails
-        // The push trigger should still work
-      }
-    } else {
-      throw new Error("The path is not a file or does not exist.");
-    }
   }
 });
-
-// Helper function to recursively fetch files from config directory
-async function fetchConfigDirectoryFiles(octokit: Octokit, repoId: string, dirPath: string, dirContents: any[]): Promise<Array<{
-  content: string;
-  path: string;
-  name: string;
-  isDirectory: boolean;
-}>> {
-  const files: Array<{
-    content: string;
-    path: string;
-    name: string;
-    isDirectory: boolean;
-  }> = [];
-
-  for (const item of dirContents) {
-    if (item.type === "file" && (
-      item.name.endsWith(".toml") || 
-      item.name.endsWith(".yaml") || 
-      item.name.endsWith(".yml") || 
-      item.name.endsWith(".json")
-    )) {
-      try {
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: repoId,
-          path: item.path,
-        });
-        if ("content" in response.data && typeof response.data.content === "string") {
-          const base64DecodedContent = Buffer.from(response.data.content, "base64").toString("utf8");
-          files.push({
-            content: base64DecodedContent,
-            path: item.path,
-            name: item.name,
-            isDirectory: true,
-          });
-        }
-      } catch (error: any) {
-        console.error(`Failed to fetch config file ${item.path}:`, error);
-      }
-    } else if (item.type === "dir") {
-      // Recursively fetch from subdirectories
-      try {
-        const subDirResponse = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: repoId,
-          path: item.path,
-        });
-        if (Array.isArray(subDirResponse.data)) {
-          const subDirFiles = await fetchConfigDirectoryFiles(octokit, repoId, item.path, subDirResponse.data);
-          files.push(...subDirFiles);
-        }
-      } catch (error: any) {
-        console.error(`Failed to fetch config subdirectory ${item.path}:`, error);
-      }
-    }
-  }
-
-  return files;
-}
 
 export const parseAndSaveMultipleConfigFiles = action({
   args: {
@@ -968,7 +614,12 @@ export const parseAndSaveMultipleConfigFiles = action({
       throw new ConvexError("Unauthenticated");
     }
 
-    const octokit = await getUserOctokit(ctx);
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
+    }
 
     // Set site status to PUBLISHING since CI/CD will automatically publish changes
     await ctx.runMutation(api.documents.update, {
@@ -977,65 +628,13 @@ export const parseAndSaveMultipleConfigFiles = action({
     });
 
     try {
-      // Get the current commit SHA and tree SHA
-      const { data: ref } = await octokit.git.getRef({
-        owner: "hugity",
-        repo: args.id,
-        ref: "heads/main",
+      await ctx.runAction(api.githubGit.gitUpdateFileContent, {
+        id: args.id,
+        filesToUpdate: args.configFiles.map(file => ({
+          path: file.path,
+          content: file.content,
+        })),
       });
-
-      const currentCommitSha = ref.object.sha;
-      const { data: currentCommit } = await octokit.git.getCommit({
-        owner: "hugity",
-        repo: args.id,
-        commit_sha: currentCommitSha,
-      });
-
-      const currentTreeSha = currentCommit.tree.sha;
-
-      // Prepare tree changes for all config files
-      const treeChanges = args.configFiles.map(file => ({
-        path: file.path,
-        mode: "100644" as const,
-        type: "blob" as const,
-        content: file.content,
-      }));
-
-      // Create new tree with all changes
-      const { data: newTree } = await octokit.git.createTree({
-        owner: "hugity",
-        repo: args.id,
-        base_tree: currentTreeSha,
-        tree: treeChanges,
-      });
-
-      // Create commit with all changes
-      const { data: newCommit } = await octokit.git.createCommit({
-        owner: "hugity",
-        repo: args.id,
-        message: "Update Hugo configuration files",
-        tree: newTree.sha,
-        parents: [currentCommitSha],
-      });
-
-      // Update the main branch reference
-      await octokit.git.updateRef({
-        owner: "hugity",
-        repo: args.id,
-        ref: "heads/main",
-        sha: newCommit.sha,
-      });
-
-      // Try to dispatch deployment workflow to ensure publishing
-      try {
-        await ctx.runAction(api.github.dispatchDeployWorkflow, {
-          id: args.id
-        });
-      } catch (dispatchError) {
-        console.warn("Failed to dispatch deployment workflow:", dispatchError);
-        // Don't fail the entire operation if workflow dispatch fails
-        // The push trigger should still work
-      }
 
       return args.configFiles.map(file => ({
         success: true,
@@ -1053,60 +652,18 @@ export const fetchGitHubFileTree = action({
   args: {
     id: v.id("documents")
   },
-  handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    let retries = 10;
-    let delay = 1000; // Start with 1 second
-
-    while (retries > 0) {
-      try {
-        // Step 1: Get the entire tree of the main branch
-        const { data: mainTree } = await octokit.git.getTree({
-          owner: "hugity",
-          repo: args.id,
-          tree_sha: "main",
-          recursive: "false", // Fetch only the top-level directories
-        });
-
-        // Step 2: Find the SHA of the "content" folder
-        const contentFolder = mainTree.tree.find((item: any) =>
-          item.path === "content" && item.type === "tree"
-        );
-
-        if (!contentFolder || !contentFolder.sha) {
-          throw new Error("Content folder not found");
-        }
-
-        // Step 3: Fetch the tree for the "content" directory using the SHA
-        const { data: contentTree } = await octokit.git.getTree({
-          owner: "hugity",
-          repo: args.id,
-          tree_sha: contentFolder.sha,
-          recursive: "true", // Now we fetch inside the content folder
-        });
-        return contentTree.tree;
-      } catch (error: any) {
-        // Check for "Git Repository is empty" (409) or "Not Found" (404) which can happen during init
-        const isRetryable =
-          error.status === 409 ||
-          (error.response && error.response.status === 409) ||
-          error.status === 404 ||
-          (error.response && error.response.status === 404) ||
-          error.message === "Content folder not found";
-
-        if (isRetryable && retries > 1) {
-          console.log(`Repo not ready yet (Status: ${error.status || 'Unknown'}, Msg: ${error.message}). Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          retries--;
-          delay *= 1.5; // Exponential backoff
-          continue;
-        }
-
-        console.error("Error fetching GitHub content folder tree:", error);
-        throw new Error("Failed to fetch GitHub content folder tree");
-      }
+  handler: async (ctx, args): Promise<any> => {
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (document?.repoSshUrl) {
+      console.log(
+        `[fetchGitHubFileTree] Using git path for repo ${document.repoSshUrl}`
+      );
+      return ctx.runAction(api.githubGit.gitFetchFileTree, { id: args.id });
     }
+
+    throw new ConvexError("Repository URL not configured");
   }
 });
 
@@ -1115,16 +672,27 @@ export const updateFileContent = action({
     id: v.id("documents"),
     filesToUpdate: v.any(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new ConvexError("Unauthenticated");
     }
 
-    const octokit = await getUserOctokit(ctx);
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
 
     if (args.filesToUpdate.length === 0) {
       throw new Error("No files to update");
+    }
+
+    let repoUrl = document?.repoSshUrl;
+    if (!repoUrl) {
+      repoUrl = `https://github.com/hugity/${args.id}.git`;
+      await ctx.runMutation(api.documents.update, {
+        id: args.id,
+        repoSshUrl: repoUrl,
+      } as any);
     }
 
     // Set site status to PUBLISHING since CI/CD will automatically publish changes
@@ -1133,95 +701,13 @@ export const updateFileContent = action({
       publishStatus: "PUBLISHING",
     });
 
-    try {
-      // Get the current commit SHA and tree SHA
-      const { data: ref } = await octokit.git.getRef({
-        owner: "hugity",
-        repo: args.id,
-        ref: "heads/main",
-      });
-
-      const currentCommitSha = ref.object.sha;
-      const { data: currentCommit } = await octokit.git.getCommit({
-        owner: "hugity",
-        repo: args.id,
-        commit_sha: currentCommitSha,
-      });
-
-      const currentTreeSha = currentCommit.tree.sha;
-
-      // Prepare tree changes
-      const treeChanges: Array<{
-        path: string;
-        mode: "100644" | "100755" | "040000" | "160000" | "120000";
-        type: "blob" | "tree" | "commit";
-        content: string;
-      }> = [];
-      const changedFileNames = [];
-
-      for (const file of args.filesToUpdate) {
-        const { content, path } = file;
-
-        // Clean up the file name for the commit message
-        const fileName = path.replace(/\.md$/, '').replace(/\//g, ', ').replace(/_/g, ' ');
-        changedFileNames.push(fileName);
-
-        // Add to tree changes
-        treeChanges.push({
-          path: `content/${path}`,
-          mode: "100644" as const,
-          type: "blob" as const,
-          content: content,
-        });
-      }
-
-      // Create new tree with all changes
-      const { data: newTree } = await octokit.git.createTree({
-        owner: "hugity",
-        repo: args.id,
-        base_tree: currentTreeSha,
-        tree: treeChanges,
-      });
-
-      // Generate commit message
-      const commitMessage = changedFileNames.length === 1
-        ? `Updated ${changedFileNames[0]}`
-        : `Updated ${changedFileNames.slice(0, -1).join(', ')} and ${changedFileNames[changedFileNames.length - 1]}`;
-
-      // Create new commit
-      const { data: newCommit } = await octokit.git.createCommit({
-        owner: "hugity",
-        repo: args.id,
-        message: commitMessage,
-        tree: newTree.sha,
-        parents: [currentCommitSha],
-      });
-
-      // Update the main branch reference
-      await octokit.git.updateRef({
-        owner: "hugity",
-        repo: args.id,
-        ref: "heads/main",
-        sha: newCommit.sha,
-      });
-
-      // Try to dispatch deployment workflow to ensure publishing
-      try {
-        await ctx.runAction(api.github.dispatchDeployWorkflow, {
-          id: args.id
-        });
-      } catch (dispatchError) {
-        console.warn("Failed to dispatch deployment workflow:", dispatchError);
-        // Don't fail the entire operation if workflow dispatch fails
-        // The push trigger should still work
-      }
-
-      console.log(`Successfully updated ${args.filesToUpdate.length} files in a single commit: ${commitMessage}`);
-
-    } catch (error) {
-      console.error("Failed to update files:", error);
-      throw new Error("Failed to update files. Please try again.");
-    }
+    console.log(
+      `[updateFileContent] Using git path for repo ${repoUrl}`
+    );
+    return ctx.runAction(api.githubGit.gitUpdateFileContent, {
+      id: args.id,
+      filesToUpdate: args.filesToUpdate,
+    });
   }
 });
 
@@ -1237,24 +723,12 @@ export const uploadImage = action({
       throw new ConvexError("Unauthenticated");
     }
 
-    const octokit = await getUserOctokit(ctx);
-
-    try {
-      const response = await octokit.repos.createOrUpdateFileContents({
-        owner: 'hugity',
-        repo: args.id,
-        path: `static/images/${args.filename}`,
-        message: 'Uploaded image',
-        content: args.file,
-        headers: {
-          'X-GitHub-Api-Version': '2022-11-28'
-        }
-      });
-      return response.data;
-    } catch (error) {
-      console.error("Failed to upload image:", error);
-      throw new Error("Failed to upload image. Please try again.");
-    }
+    await ctx.runAction(api.githubGit.gitUploadBinary, {
+      id: args.id,
+      path: `static/images/${args.filename}`,
+      base64: args.file,
+    });
+    return true;
   }
 });
 
@@ -1298,61 +772,11 @@ export const deleteImage = action({
     imagePath: v.string(),
   },
   handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    try {
-      console.log("Attempting to delete image:", {
-        repo: args.id,
-        path: `static/${args.imagePath}`
-      });
-
-      try {
-        // Get the current file content to preserve the SHA
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
-          path: `static/${args.imagePath}`,
-        });
-
-        console.log("Get content response:", response.data);
-
-        if (Array.isArray(response.data)) {
-          throw new Error("Path is a directory, not a file");
-        }
-
-        if (!('sha' in response.data)) {
-          console.error("Invalid response data:", response.data);
-          throw new Error("File not found or invalid");
-        }
-
-        // Delete the file
-        const deleteResponse = await octokit.repos.deleteFile({
-          owner: "hugity",
-          repo: args.id,
-          path: `static/${args.imagePath}`,
-          message: "Deleted image",
-          sha: response.data.sha
-        });
-
-        console.log("Delete response:", deleteResponse.data);
-      } catch (error) {
-        // If the file is not found (404), we can consider this a success
-        // since our goal is to ensure the file doesn't exist
-        if (error instanceof Error && 'status' in error && error.status === 404) {
-          console.log("File already deleted or not found, proceeding with metadata update");
-          return true;
-        }
-        throw error;
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Failed to delete image. Full error:", error);
-      if (error instanceof Error) {
-        throw new Error(`Failed to delete image: ${error.message}`);
-      }
-      throw new Error("Failed to delete image. Please try again.");
-    }
+    await ctx.runAction(api.githubGit.gitDeletePaths, {
+      id: args.id,
+      paths: [`static/${args.imagePath}`],
+    });
+    return true;
   }
 });
 
@@ -1368,50 +792,13 @@ export const createMarkdownFileInRepo = action({
     if (!identity) {
       throw new ConvexError("Unauthenticated");
     }
-
-    const octokit = await getUserOctokit(ctx);
-
-    try {
-      // Decode the filePath to handle any double-encoded characters
-      const decodedPath = decodeURIComponent(args.filePath);
-
-      // Try to get the file to check if it already exists (to get sha if needed)
-      let sha: string | undefined = undefined;
-      try {
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
-          path: decodedPath,
-        });
-        if (!Array.isArray(response.data) && 'sha' in response.data) {
-          sha = response.data.sha;
-        }
-      } catch {
-        // If not found, that's fine (we are creating)
-        console.log("File not found, will create new:", decodedPath);
-      }
-
-      if (args.failIfExists && sha) {
-        throw new ConvexError(`A page named "${decodedPath.replace(/^content\//, '')}" already exists.`);
-      }
-
-      await octokit.repos.createOrUpdateFileContents({
-        owner: "hugity",
-        repo: args.id,
-        path: decodedPath,
-        message: `Create file: ${decodedPath}`,
-        content: Buffer.from(args.content).toString("base64"),
-        ...(sha ? { sha } : {}),
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to create markdown file:", error);
-      // Preserve ConvexError as-is
-      if (error instanceof ConvexError) {
-        throw error;
-      }
-      throw new ConvexError("Failed to create page. Please try again.");
-    }
+    await ctx.runAction(api.githubGit.gitCreateMarkdownFile, {
+      id: args.id,
+      filePath: args.filePath,
+      content: args.content,
+      failIfExists: args.failIfExists,
+    });
+    return true;
   },
 });
 
@@ -1420,97 +807,12 @@ export const deleteFile = action({
     id: v.id("documents"),
     filePath: v.string(), // This is the top-level path to delete (file or directory)
   },
-  handler: async (ctx, args) => { // ctx is available if we need to call other actions/mutations
-    const octokit = await getUserOctokit(ctx);
-
-    const deletePathRecursive = async (currentPath: string) => {
-      console.log("[deletePathRecursive] Attempting to get content for path:", currentPath);
-      let contentData;
-      try {
-        const response = await octokit.repos.getContent({
-          owner: "hugity",
-          repo: args.id,
-          path: currentPath,
-        });
-        contentData = response.data;
-        console.log(`[deletePathRecursive] Got content for ${currentPath}. Type: ${Array.isArray(contentData) ? 'directory' : 'file'}, Data:`, JSON.stringify(contentData).substring(0, 200) + "...");
-      } catch (error: any) {
-        if (error.status === 404) {
-          console.log(`[deletePathRecursive] Path ${currentPath} not found during getContent. Assuming already deleted or does not exist.`);
-          return; // Nothing to delete
-        }
-        console.error(`[deletePathRecursive] Error fetching content for ${currentPath}:`, error.status, error.message, error.response?.data);
-        throw error; // Rethrow other errors
-      }
-
-      if (Array.isArray(contentData)) {
-        // It's a directory
-        console.log(`[deletePathRecursive] Path ${currentPath} is a directory. Processing ${contentData.length} items within it...`);
-        if (contentData.length === 0) {
-          console.log(`[deletePathRecursive] Directory ${currentPath} is empty. No contents to delete from within.`);
-          // GitHub usually removes empty directories automatically when the last file is deleted.
-          // No explicit directory delete call is usually needed with this strategy.
-          return;
-        }
-        // Important: Iterate over a copy of the array if items are being removed, though here we recurse.
-        for (const item of contentData) {
-          console.log(`[deletePathRecursive] Processing item in directory ${currentPath}: Path: ${item.path}, Type: ${item.type}, SHA: ${item.sha}`);
-          // item.path is the full path from the repo root for items returned by getContent for a directory.
-          await deletePathRecursive(item.path);
-        }
-        console.log(`[deletePathRecursive] Finished processing all items in directory ${currentPath}.`);
-
-      } else if (typeof contentData === 'object' && contentData !== null && contentData.type === 'file') {
-        // It's a single file
-        console.log(`[deletePathRecursive] Path ${currentPath} is a file. Attempting to delete...`);
-        if (!contentData.sha) {
-          console.error(`[deletePathRecursive] Invalid file data for ${currentPath}, SHA is missing:`, contentData);
-          throw new Error(`File ${currentPath} found but SHA is missing, cannot delete.`);
-        }
-        try {
-          await octokit.repos.deleteFile({
-            owner: "hugity",
-            repo: args.id,
-            path: currentPath,
-            message: `Delete file: ${currentPath}`,
-            sha: contentData.sha,
-          });
-          console.log(`[deletePathRecursive] File ${currentPath} deleted successfully from GitHub.`);
-        } catch (deleteError: any) {
-           console.error(`[deletePathRecursive] Failed to delete file ${currentPath} from GitHub:`, deleteError.status, deleteError.message, deleteError.response?.data);
-           if (deleteError.status === 404) {
-             console.warn(`[deletePathRecursive] File ${currentPath} was not found during deletion attempt. Assuming already deleted.`);
-           } else {
-            throw deleteError; // Rethrow if it's not a 404 on delete
-           }
-        }
-      } else {
-        console.warn(`[deletePathRecursive] Path ${currentPath} was not identified as a processable file or directory. Content:`, contentData);
-      }
-    };
-
-    try {
-      console.log(`[deleteFile Action] Starting deletion process for top-level path: ${args.filePath}`);
-      await deletePathRecursive(args.filePath);
-      console.log(`[deleteFile Action] Successfully completed deletion process for path: ${args.filePath}`);
-      return true;
-    } catch (error: any) {
-      console.error(`[deleteFile Action] Overall failure for path ${args.filePath}. Error:`, error.status, error.message, error.name, error.response?.data);
-
-      let finalMessage = `Failed to delete path ${args.filePath}.`;
-      if (error.name === 'HttpError' && error.response && error.response.data && error.response.data.message) {
-        finalMessage = `GitHub API Error: ${error.response.data.message} (status: ${error.status || 'unknown'})`;
-        if (error.response.data.documentation_url) {
-           finalMessage += ` - See ${error.response.data.documentation_url}`;
-        }
-      } else if (error instanceof Error && error.message) {
-        finalMessage = error.message; // Use the specific error message thrown by deletePathRecursive
-      } else {
-        finalMessage = `An unexpected error occurred while deleting ${args.filePath}. Status: ${error.status || 'unknown'}`;
-      }
-      console.error("[deleteFile Action] Throwing final error:", finalMessage);
-      throw new Error(finalMessage);
-    }
+  handler: async (ctx, args) => {
+    await ctx.runAction(api.githubGit.gitDeletePaths, {
+      id: args.id,
+      paths: [args.filePath],
+    });
+    return true;
   },
 });
 
@@ -1522,193 +824,19 @@ export const renamePathInRepo = action({
     itemType: v.union(v.literal("file"), v.literal("folder")),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new ConvexError("Unauthenticated");
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
     }
-
-    const octokit = await getUserOctokit(ctx);
-    const owner = "hugity";
-    const repo = args.id;
-
-    console.log(`[renamePathInRepo] Starting rename for repo '${repo}': '${args.oldPath}' to '${args.newPath}' (type: ${args.itemType})`);
-
-    try {
-      if (args.itemType === "file") {
-        // Check if the destination file already exists
-        try {
-          await octokit.repos.getContent({
-            owner,
-            repo,
-            path: args.newPath,
-          });
-          // If successful, it means the file exists
-          const cleanPath = args.newPath.replace(/^content\//, '');
-          throw new ConvexError(`A page named "${cleanPath}" already exists.`);
-        } catch (error) {
-          if (error instanceof ConvexError) {
-            throw error;
-          }
-          // 404 means file doesn't exist, which is what we want
-        }
-
-        let oldFileContentBase64: string;
-        let oldFileSha: string;
-
-        try {
-          const response = await octokit.repos.getContent({
-            owner,
-            repo,
-            path: args.oldPath,
-          });
-
-          if (Array.isArray(response.data) || response.data.type !== 'file' || typeof response.data.content !== 'string' || !response.data.sha) {
-            console.error(`[renamePathInRepo] Expected file at oldPath '${args.oldPath}', but got different type or missing content/SHA. Data:`, response.data);
-            throw new Error(`'${args.oldPath}' is not a valid file or content is missing.`);
-          }
-          oldFileContentBase64 = response.data.content;
-          oldFileSha = response.data.sha;
-          console.log(`[renamePathInRepo] Fetched old file: '${args.oldPath}'`);
-        } catch (error) {
-          if (error instanceof Error && 'status' in error && error.status === 404) {
-            console.error(`[renamePathInRepo] Old file '${args.oldPath}' not found.`);
-            throw new Error(`File '${args.oldPath}' not found.`);
-          }
-          console.error(`[renamePathInRepo] Error fetching old file '${args.oldPath}':`, error);
-          throw error;
-        }
-
-        try {
-          await octokit.repos.createOrUpdateFileContents({
-            owner,
-            repo,
-            path: args.newPath,
-            message: `Rename: Create new file ${args.newPath} (from ${args.oldPath})`,
-            content: oldFileContentBase64,
-          });
-          console.log(`[renamePathInRepo] Created new file: '${args.newPath}'`);
-        } catch (error) {
-          console.error(`[renamePathInRepo] Error creating new file '${args.newPath}':`, error);
-          throw new Error(`Failed to create '${args.newPath}'. Original file '${args.oldPath}' is untouched.`);
-        }
-
-        try {
-          await octokit.repos.deleteFile({
-            owner,
-            repo,
-            path: args.oldPath,
-            message: `Rename: Delete old file ${args.oldPath} (moved to ${args.newPath})`,
-            sha: oldFileSha,
-          });
-          console.log(`[renamePathInRepo] Deleted old file: '${args.oldPath}'`);
-        } catch (error) {
-          console.error(`[renamePathInRepo] Error deleting old file '${args.oldPath}':`, error);
-          throw new Error(`Created '${args.newPath}', but failed to delete old '${args.oldPath}'. Please check repository.`);
-        }
-
-      } else if (args.itemType === "folder") {
-        console.log(`[renamePathInRepo] Starting optimized folder rename for '${args.oldPath}' to '${args.newPath}'`);
-        
-        // 1. Get the current commit SHA of the main branch
-        const { data: refData } = await octokit.git.getRef({
-          owner,
-          repo,
-          ref: "heads/main",
-        });
-        const currentCommitSha = refData.object.sha;
-
-        // 2. Get the full recursive tree
-          const { data: treeData } = await octokit.git.getTree({
-            owner,
-            repo,
-          tree_sha: currentCommitSha,
-            recursive: "true",
-          });
-
-        if (treeData.truncated) {
-          throw new Error("Repository is too large for atomic rename operation.");
-        }
-
-        // Check for existence collision (folder or file at destination)
-        // If renaming "docs" to "help", check if "help" or "help/*" exists in current tree
-        const collision = treeData.tree.some((item) => {
-            if (!item.path) return false;
-            // Check exact match (file or folder root if tracked)
-            if (item.path === args.newPath) return true;
-            // Check if it's a child of the new path (meaning newPath is an existing folder)
-            if (item.path.startsWith(args.newPath + "/")) return true;
-            return false;
-        });
-
-        if (collision) {
-            const cleanPath = args.newPath.replace(/^content\//, '');
-            throw new ConvexError(`A page named "${cleanPath}" already exists.`);
-        }
-
-        // 3. Construct the new tree
-        // We map over ALL files in the repo.
-        // If a file is inside the old folder, we change its path.
-        // Otherwise, we keep it as is.
-        const newTreeItems = treeData.tree
-          .filter((item) => item.type !== "tree") // We only care about blobs (files), trees are implied by paths
-          .map((item) => {
-            if (!item.path || !item.mode || !item.type || !item.sha) return null;
-
-            let path = item.path;
-
-            // Check if this item is within the folder we're renaming
-            // We check for directory separator to avoid partial matches (e.g. renaming "test" matching "testing")
-            if (path === args.oldPath || path.startsWith(args.oldPath + "/")) {
-              // Replace the old prefix with the new prefix
-              path = args.newPath + path.substring(args.oldPath.length);
-        }
-
-            return {
-              path,
-              mode: item.mode as "100644" | "100755" | "040000" | "160000" | "120000",
-              type: item.type as "blob" | "tree" | "commit",
-              sha: item.sha,
-            };
-          })
-          .filter((item): item is NonNullable<typeof item> => item !== null);
-
-        // 4. Create the new tree
-        const { data: newTree } = await octokit.git.createTree({
-          owner,
-          repo,
-          tree: newTreeItems,
-        });
-
-        // 5. Create a new commit pointing to the new tree
-        const { data: newCommit } = await octokit.git.createCommit({
-              owner,
-              repo,
-          message: `Rename folder ${args.oldPath} to ${args.newPath}`,
-          tree: newTree.sha,
-          parents: [currentCommitSha],
-        });
-
-        // 6. Update the branch reference to the new commit
-        await octokit.git.updateRef({
-              owner,
-              repo,
-          ref: "heads/main",
-          sha: newCommit.sha,
-        });
-
-        console.log(`[renamePathInRepo] Successfully renamed folder via tree rewrite.`);
-      }
-      console.log(`[renamePathInRepo] Rename operation completed for '${args.oldPath}' to '${args.newPath}'.`);
-      return true;
-
-    } catch (error) {
-      console.error(`[renamePathInRepo] Overall failure for rename '${args.oldPath}' to '${args.newPath}'. Error:`, error);
-      // Preserve ConvexError as-is for clean client messages
-      if (error instanceof ConvexError) {
-        throw error;
-      }
-      throw new ConvexError("Failed to rename. Please try again.");
-    }
+    await ctx.runAction(api.githubGit.gitRenamePath, {
+      id: args.id,
+      oldPath: args.oldPath,
+      newPath: args.newPath,
+      itemType: args.itemType,
+    });
+    return true;
   },
 });
 
@@ -1716,67 +844,14 @@ export const fetchAssetsTree = action({
   args: {
     id: v.id("documents")
   },
-  handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    try {
-      // Step 1: Get the entire tree of the main branch
-      const { data: mainTree } = await octokit.git.getTree({
-        owner: "hugity",
-        repo: args.id,
-        tree_sha: "main",
-        recursive: "false", // Fetch only the top-level directories
-      });
-
-      // Step 2: Find both static and assets folders
-      const staticFolder = mainTree.tree.find((item: any) =>
-        item.path === "static" && item.type === "tree"
-      );
-      const assetsFolder = mainTree.tree.find((item: any) =>
-        item.path === "assets" && item.type === "tree"
-      );
-
-      // Use a Map to ensure unique entries by path
-      const assetsMap = new Map();
-
-      // Step 3: Fetch the tree for the "static" directory if it exists
-      if (staticFolder && staticFolder.sha) {
-        const { data: staticTree } = await octokit.git.getTree({
-          owner: "hugity",
-          repo: args.id,
-          tree_sha: staticFolder.sha,
-          recursive: "true",
-        });
-        staticTree.tree.forEach((item: any) => {
-          assetsMap.set(item.path, {
-            ...item,
-            path: `static/${item.path}`
-          });
-        });
-      }
-
-      // Step 4: Fetch the tree for the "assets" directory if it exists
-      if (assetsFolder && assetsFolder.sha) {
-        const { data: assetsTree } = await octokit.git.getTree({
-          owner: "hugity",
-          repo: args.id,
-          tree_sha: assetsFolder.sha,
-          recursive: "true",
-        });
-        assetsTree.tree.forEach((item: any) => {
-          assetsMap.set(item.path, {
-            ...item,
-            path: `assets/${item.path}`
-          });
-        });
-      }
-
-      // Convert Map back to array
-      return Array.from(assetsMap.values());
-    } catch (error) {
-      console.error("Error fetching GitHub content folder tree:", error);
-      throw new Error("Failed to fetch GitHub content folder tree");
+  handler: async (ctx, args): Promise<any[]> => {
+    const document = await ctx.runQuery(api.documents.getById, {
+      documentId: args.id,
+    });
+    if (!document?.repoSshUrl) {
+      throw new ConvexError("Repository URL not configured");
     }
+    return ctx.runAction(api.githubGit.gitFetchAssetsTree, { id: args.id });
   }
 });
 
@@ -1786,35 +861,10 @@ export const deleteAsset = action({
     filePath: v.string(),
   },
   handler: async (ctx, args) => {
-    const octokit = await getUserOctokit(ctx);
-
-    try {
-      // First, get the current file to get its SHA
-      const response = await octokit.repos.getContent({
-        owner: "hugity",
-        repo: args.id,
-        path: args.filePath,
-      });
-
-      if (Array.isArray(response.data)) {
-        throw new Error("Path is a directory, not a file");
-      }
-
-      const sha = response.data.sha;
-
-      // Delete the file
-      await octokit.repos.deleteFile({
-        owner: "hugity",
-        repo: args.id,
-        path: args.filePath,
-        message: `Delete asset: ${args.filePath}`,
-        sha: sha,
-      });
-
-      return true;
-    } catch (error) {
-      console.error("Failed to delete asset:", error);
-      throw new Error("Failed to delete asset. Please try again.");
-    }
+    await ctx.runAction(api.githubGit.gitDeletePaths, {
+      id: args.id,
+      paths: [args.filePath],
+    });
+    return true;
   }
 });

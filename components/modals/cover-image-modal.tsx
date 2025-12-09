@@ -93,15 +93,16 @@ export const CoverImageModal = () => {
 
         const promise = (async () => {
             const uniqueFilename = generateUniqueFilename(selectedFile.filename);
-            const res = await uploadImage({
+            const uploadOk = await uploadImage({
                 id: documentId as Id<"documents">,
                 file: selectedFile.getFileEncodeBase64String(),
                 filename: uniqueFilename
             });
-            if (res && res.content && res.content.path) {
+            if (uploadOk) {
                 const filePathString = Array.isArray(filePath) ? filePath.join('/') : filePath;
                 if (currentDocument) {
-                    const imagePath = res.content.path.replace('static/', '');
+                    // Uploaded to static/images/<uniqueFilename>; strip "static/" for frontmatter
+                    const imagePath = `images/${uniqueFilename}`;
 
                     // Smart key detection: use existing image key or find the best one
                     let imageKey: string;

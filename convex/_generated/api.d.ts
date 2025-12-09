@@ -9,7 +9,9 @@
  */
 
 import type * as documents from "../documents.js";
+import type * as git from "../git.js";
 import type * as github from "../github.js";
+import type * as githubGit from "../githubGit.js";
 import type * as http from "../http.js";
 import type * as httpActions from "../httpActions.js";
 import type * as hugoTemplates from "../hugoTemplates.js";
@@ -22,7 +24,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   documents: typeof documents;
+  git: typeof git;
   github: typeof github;
+  githubGit: typeof githubGit;
   http: typeof http;
   httpActions: typeof httpActions;
   hugoTemplates: typeof hugoTemplates;
