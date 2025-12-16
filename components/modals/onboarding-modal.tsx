@@ -60,8 +60,8 @@ export const OnboardingModal = () => {
                     </DialogDescription>
                 </DialogHeader>
 
+                {/* TODO: Re-enable video when updated version is available
                 <div className="px-4 sm:px-6 flex-1 overflow-y-auto">
-                    {/* Video Container */}
                     <div className="relative aspect-video bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden mb-4 sm:mb-6">
                         <iframe
                             src="https://www.youtube.com/embed/VXWjYOb_yMs"
@@ -71,6 +71,7 @@ export const OnboardingModal = () => {
                         />
                     </div>
                 </div>
+                */}
 
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:justify-between p-4 sm:p-6 pt-0 border-t border-gray-100 dark:border-gray-800">
                     <Button

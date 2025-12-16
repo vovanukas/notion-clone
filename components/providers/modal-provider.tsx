@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 
 import { CoverImageModal } from "@/components/modals/cover-image-modal";
 import { ThemeSelectorModal } from "@/components/modals/theme-selector-modal";
-import { OnboardingModal } from "@/components/modals/onboarding-modal";
+// TODO: Re-enable onboarding when updated video is available
+// import { OnboardingModal } from "@/components/modals/onboarding-modal";
 
 export const ModalProvider = () => {
     const [isMounted, setIsMounted] = useState(false)
@@ -21,7 +22,8 @@ export const ModalProvider = () => {
         <>
             <CoverImageModal />
             <ThemeSelectorModal />
-            <OnboardingModal />
+            {/* TODO: Re-enable onboarding when updated video is available */}
+            {/* <OnboardingModal /> */}
         </>
     )
 }
